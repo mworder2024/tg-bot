@@ -150,8 +150,8 @@
     "endedAt": null
   },
   "-1002633946257": {
-    "id": "-1002633946257_1753226028823",
-    "gameId": "0PCLMM",
+    "id": "-1002633946257_1753262376835",
+    "gameId": "SNAXD2",
     "creator": 5970380897,
     "players": [
       [
@@ -159,106 +159,24 @@
         {
           "id": "5970380897",
           "username": "memeworldorder",
-          "joinedAt": "2025-07-22T23:13:48.823Z"
-        }
-      ],
-      [
-        "7818203588",
-        {
-          "id": "7818203588",
-          "username": "Pachenko_14",
-          "joinedAt": "2025-07-22T23:14:35.356Z"
-        }
-      ],
-      [
-        "1893934628",
-        {
-          "id": "1893934628",
-          "username": "thatneusguy",
-          "joinedAt": "2025-07-22T23:15:11.087Z"
-        }
-      ],
-      [
-        "5228498784",
-        {
-          "id": "5228498784",
-          "username": "Glayzz_4T9ne_XD",
-          "joinedAt": "2025-07-22T23:15:34.306Z"
-        }
-      ],
-      [
-        "6098929742",
-        {
-          "id": "6098929742",
-          "username": "lsyontg",
-          "joinedAt": "2025-07-22T23:15:43.990Z"
-        }
-      ],
-      [
-        "1824298261",
-        {
-          "id": "1824298261",
-          "username": "sam_web3r",
-          "joinedAt": "2025-07-22T23:15:51.167Z"
+          "joinedAt": "2025-07-23T09:19:36.835Z"
         }
       ]
     ],
     "state": "FINISHED",
-    "numberSelections": [
-      [
-        "5970380897",
-        [
-          7
-        ]
-      ],
-      [
-        "7818203588",
-        [
-          1
-        ]
-      ],
-      [
-        "1893934628",
-        [
-          8
-        ]
-      ],
-      [
-        "5228498784",
-        [
-          11
-        ]
-      ],
-      [
-        "6098929742",
-        [
-          2
-        ]
-      ],
-      [
-        "1824298261",
-        [
-          3
-        ]
-      ]
-    ],
-    "createdAt": "2025-07-22T23:13:48.823Z",
+    "numberSelections": [],
+    "createdAt": "2025-07-23T09:19:36.835Z",
     "maxPlayers": 50,
     "numberRange": {
       "min": 1,
-      "max": 12
+      "max": 2
     },
-    "winnerCount": 1,
+    "winnerCount": 5,
     "selectionMultiplier": 2,
     "startMinutes": 5,
     "chatId": -1002633946257,
-    "scheduledStartTime": "2025-07-22T23:18:48.823Z",
-    "prizeInfo": {
-      "totalPrize": 19331,
-      "prizePerSurvivor": 19331,
-      "vrfProof": "28ccc6ed6768c038f34f0f2ec0fdca2a87c32ac15726898afbb4463440754d6c"
-    },
-    "startedAt": "2025-07-22T23:17:07.910Z",
-    "endedAt": "2025-07-22T23:21:42.913Z"
+    "scheduledStartTime": "2025-07-23T09:24:36.835Z",
+    "endedAt": "2025-07-23T09:19:45.007Z",
+    "startedAt": null
   }
 }

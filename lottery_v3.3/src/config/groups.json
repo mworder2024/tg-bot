@@ -1,0 +1,22 @@
+{
+  "admins": [
+    "5970380897",
+    "1824298261"
+  ],
+  "groups": {
+    "-1002633946257": {
+      "id": "-1002633946257",
+      "name": "Default Group",
+      "addedBy": "5970380897",
+      "addedAt": "2025-07-15T00:33:59.225Z",
+      "enabled": true
+    },
+    "-1002330414734": {
+      "id": "-1002330414734",
+      "name": "memeworldorder (official)",
+      "addedBy": "5970380897",
+      "addedAt": "2025-07-15T01:02:33.023Z",
+      "enabled": true
+    }
+  }
+}
