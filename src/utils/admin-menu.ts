@@ -478,51 +478,15 @@ export class AdminMenu {
           await ctx.answerCbQuery('Loading game stats...');
           
           try {
-            // Query database for game statistics
-            const { query } = await import('../api/services/database.service.js');
-            
-            // Get game statistics from database
-            const totalGamesResult = await query(
-              'SELECT COUNT(*) as total FROM game_metrics'
-            );
-            const activeGamesResult = await query(
-              "SELECT COUNT(*) as total FROM game_metrics WHERE status = 'active'"
-            );
-            const completedGamesResult = await query(
-              "SELECT COUNT(*) as total FROM game_metrics WHERE status = 'completed'"
-            );
-            
-            const totalGames = parseInt(totalGamesResult.rows[0]?.total || '0');
-            const activeGames = parseInt(activeGamesResult.rows[0]?.total || '0');
-            const completedGames = parseInt(completedGamesResult.rows[0]?.total || '0');
-            
+            // Game statistics are now tracked in memory/Redis only
             let message = '🎮 **Game Statistics**\n\n';
-            message += `Total Games: **${totalGames}**\n`;
-            message += `Active Games: **${activeGames}**\n`;
-            message += `Completed Games: **${completedGames}**\n`;
-            message += `Cancelled Games: **${totalGames - activeGames - completedGames}**\n\n`;
-            
-            // Get recent games from database
-            const recentGamesResult = await query(
-              `SELECT game_id, status, player_count, created_at 
-               FROM game_metrics 
-               ORDER BY created_at DESC 
-               LIMIT 5`
-            );
-            
-            if (recentGamesResult.rows.length > 0) {
-              message += '**Recent Games:**\n';
-              recentGamesResult.rows.forEach((game: any, index: number) => {
-                const status = game.status === 'active' ? '🟢 Active' : 
-                             game.status === 'completed' ? '✅ Completed' : '❌ Cancelled';
-                const date = new Date(game.created_at).toLocaleDateString();
-                message += `${index + 1}. Game ${game.game_id}: ${game.player_count} players - ${status} (${date})\n`;
-              });
-            }
+            message += '⚠️ Database statistics are no longer available.\n';
+            message += 'Game metrics are now tracked in memory and Redis only.\n\n';
+            message += 'Use /leaderboard and /stats commands for current game data.';
             
             await ctx.reply(message, { parse_mode: 'Markdown' });
           } catch (error) {
-            console.error('Error loading game stats:', error);
+            console.error('Error in game stats:', error);
             await ctx.reply('❌ Error loading game statistics. Please try again later.');
           }
           break;
@@ -532,48 +496,11 @@ export class AdminMenu {
           await ctx.answerCbQuery('Loading player stats...');
           
           try {
-            const { query } = await import('../api/services/database.service.js');
-            
-            // Get top players from player_analytics table
-            const topPlayersResult = await query(
-              `SELECT 
-                user_id,
-                username,
-                games_played,
-                games_won,
-                total_spent,
-                total_won,
-                CASE 
-                  WHEN games_played > 0 
-                  THEN (games_won::DECIMAL / games_played * 100)
-                  ELSE 0 
-                END as win_rate
-              FROM player_analytics
-              WHERE games_played > 0
-              ORDER BY games_won DESC
-              LIMIT 10`
-            );
-            
-            // Get total games count
-            const totalGamesResult = await query(
-              'SELECT COUNT(*) as total FROM game_metrics'
-            );
-            const totalGames = parseInt(totalGamesResult.rows[0]?.total || '0');
-            
+            // Player statistics are now tracked in memory/Redis only
             let message = '👥 **Player Statistics**\n\n';
-            message += `Total Games Played: **${totalGames}**\n\n`;
-            
-            if (topPlayersResult.rows.length > 0) {
-              message += '**Top 10 Players:**\n';
-              topPlayersResult.rows.forEach((player: any, index: number) => {
-                const emoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
-                const username = player.username || `Player_${player.user_id.substring(0, 8)}`;
-                const winRate = Math.round(player.win_rate);
-                message += `${emoji} @${username} - ${player.games_won} wins (${winRate}% win rate)\n`;
-              });
-            } else {
-              message += 'No player statistics available yet.\n';
-            }
+            message += '⚠️ Database statistics are no longer available.\n';
+            message += 'Player data is now tracked in memory and Redis only.\n\n';
+            message += 'Use /leaderboard and /stats commands for player rankings.';
             
             await ctx.reply(message, { parse_mode: 'Markdown' });
           } catch (error) {

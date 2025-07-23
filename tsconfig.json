@@ -27,5 +27,5 @@
     "types": ["jest", "node"]
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "coverage", "tests"]
+  "exclude": ["node_modules", "dist", "coverage", "tests", "src/monitoring/sentry.config.ts", "src/services/error-monitoring.service.ts"]
 }

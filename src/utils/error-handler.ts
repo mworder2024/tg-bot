@@ -139,48 +139,6 @@ export function wrapAsync<T extends any[], R>(
   };
 }
 
-// Express async handler (asyncHandler alias for compatibility)
-export function asyncHandler<T extends any[], R>(
-  fn: (...args: T) => Promise<R>
-): (...args: T) => Promise<R> {
-  return wrapAsync(fn);
-}
-
-// Express error handler middleware
-export function errorMiddleware() {
-  return (error: Error | AppError, req: any, res: any, next: any) => {
-    handleError(error, {
-      url: req.url,
-      method: req.method,
-      ip: req.ip,
-      userAgent: req.get('user-agent')
-    });
-
-    if (error instanceof AppError) {
-      return res.status(error.statusCode).json({
-        success: false,
-        error: {
-          type: error.type,
-          message: error.message,
-          ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
-        }
-      });
-    }
-
-    // Unexpected error
-    return res.status(500).json({
-      success: false,
-      error: {
-        type: ErrorType.INTERNAL_SERVER_ERROR,
-        message: 'An unexpected error occurred',
-        ...(process.env.NODE_ENV === 'development' && { 
-          originalMessage: error.message,
-          stack: error.stack 
-        })
-      }
-    });
-  };
-}
 
 // Utility functions for common error scenarios
 export function createValidationError(field: string, value: any, expected: string): ValidationError {
@@ -472,9 +430,6 @@ export class ErrorHandler {
     };
   }
 
-  expressErrorMiddleware() {
-    return errorMiddleware();
-  }
 
   static setupProcessErrorHandlers(): void {
     setupProcessErrorHandlers();
@@ -497,8 +452,6 @@ export default {
   ErrorType,
   handleError,
   wrapAsync,
-  asyncHandler,
-  errorMiddleware,
   createValidationError,
   createNotFoundError,
   createBlockchainError,

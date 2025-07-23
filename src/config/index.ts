@@ -11,8 +11,12 @@ const env = cleanEnv(process.env, {
     choices: ['development', 'staging', 'production'] 
   }),
   
-  // Database
-  DATABASE_URL: str({ desc: 'PostgreSQL connection string' }),
+  // Database (optional - web/API removed)
+  DATABASE_URL: str({ 
+    desc: 'PostgreSQL connection string', 
+    default: '', 
+    devDefault: '' 
+  }),
   
   // Redis
   REDIS_URL: str({ 
@@ -20,10 +24,14 @@ const env = cleanEnv(process.env, {
     desc: 'Redis connection string' 
   }),
   
-  // API Server
+  // API Server (optional - web/API removed)
   PORT: num({ default: 3000 }),
   API_URL: url({ default: 'http://localhost:3000' }),
-  JWT_SECRET: str({ desc: 'JWT secret for API authentication' }),
+  JWT_SECRET: str({ 
+    desc: 'JWT secret for API authentication', 
+    default: 'jwt-secret-not-used',
+    devDefault: 'jwt-secret-not-used' 
+  }),
   
   // Solana Configuration
   SOLANA_NETWORK: str({ 
@@ -163,7 +171,7 @@ export default {
   
   features: {
     paidGames: env.ENABLE_PAID_GAMES,
-    webDashboard: env.ENABLE_WEB_DASHBOARD,
+    webDashboard: false, // Web dashboard removed
     blockchain: env.ENABLE_BLOCKCHAIN,
     quizMode: env.ENABLE_QUIZ_MODE,
     anthropicIntegration: env.ENABLE_ANTHROPIC_INTEGRATION,

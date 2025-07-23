@@ -14,7 +14,7 @@ A feature-rich Telegram bot for running lottery/elimination games with scheduled
 ### Advanced Features
 - **Scheduled Games** - Automatic recurring games at set intervals
 - **Auto-activation** - Games start automatically when no active game exists
-- **Web API** - RESTful API for game management and analytics
+- **Redis Caching** - Optional Redis support for improved performance
 - **Payment Integration** - Support for paid entry games (configurable)
 - **Multi-group Support** - Run games in multiple Telegram groups
 - **VRF Integration** - Verifiable random number generation for fairness
@@ -23,7 +23,7 @@ A feature-rich Telegram bot for running lottery/elimination games with scheduled
 
 ### Prerequisites
 - Node.js v18+ 
-- PostgreSQL database
+- PostgreSQL database (optional)
 - Redis cache (optional)
 - Telegram Bot Token
 
@@ -57,13 +57,13 @@ REDIS_URL=redis://localhost:6379
 
 5. Initialize the database:
 ```bash
-npm run db:migrate
+# Database setup is optional - bot works with file storage
 ```
 
 6. Start the bot:
 ```bash
 # Development
-npm run dev:enhanced
+npm run dev
 
 # Production
 npm run build && npm start
@@ -128,18 +128,12 @@ Default values can be modified in environment variables:
 - Auto-activation when no active game exists (30-minute window)
 - Manual override with `/activatenext` command
 
-## 🌐 Web API
+## 📊 Data Storage
 
-The bot includes a REST API for external integrations:
-
-### Endpoints
-- `GET /api/games` - List all games
-- `GET /api/games/:id` - Get game details
-- `POST /api/games` - Create new game
-- `GET /api/leaderboard` - Get leaderboard data
-- `GET /api/analytics` - Game statistics
-
-See [API Documentation](docs/API_DOCUMENTATION.md) for details.
+The bot uses a hybrid storage approach:
+- **File-based storage** - Primary storage for game state and player data
+- **Redis caching** - Optional caching layer for improved performance
+- **Automatic sync** - Data automatically syncs between file and Redis storage
 
 ## 🗄️ Database Schema
 
