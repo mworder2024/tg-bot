@@ -2163,6 +2163,24 @@ bot.catch((err: any, ctx) => {
   logger.error(`Error for ${ctx.updateType}:`, err);
 });
 
+// Simple health check endpoint for Railway
+if (process.env.PORT) {
+  const http = require('http');
+  const server = http.createServer((req: any, res: any) => {
+    if (req.url === '/health') {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end('OK');
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+  });
+  
+  server.listen(process.env.PORT, () => {
+    logger.info(`Health check server listening on port ${process.env.PORT}`);
+  });
+}
+
 // Start bot
 async function startBot() {
   try {
@@ -2170,7 +2188,16 @@ async function startBot() {
     await initializeRedis();
     console.log('🔴 Redis initialized for game persistence');
     
-    await botWalletManager.initializeWallet();
+    // Initialize wallet manager if Solana RPC is configured
+    try {
+      if (process.env.SOLANA_RPC_URL) {
+        await botWalletManager.initializeWallet();
+      } else {
+        console.log('⚠️  Solana wallet not configured, running without blockchain features');
+      }
+    } catch (walletError) {
+      console.log('⚠️  Wallet initialization failed, continuing without blockchain features:', walletError.message);
+    }
     
     const me = await bot.telegram.getMe();
     logger.info('✅ Bot started:', me.username);
@@ -2190,3 +2217,7 @@ async function startBot() {
 }
 
 startBot();
+
+// Enable graceful stop
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
