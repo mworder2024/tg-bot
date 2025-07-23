@@ -60,6 +60,22 @@ async function importDataIfNeeded(redisClient) {
       console.log('✅ Imported winner log');
     }
 
+    // 5. Load player stats for leaderboard
+    const playerStatsPath = path.join(__dirname, '../data/player_stats.json');
+    if (fs.existsSync(playerStatsPath)) {
+      const statsData = JSON.parse(fs.readFileSync(playerStatsPath, 'utf8'));
+      await redisClient.set('leaderboard:stats', JSON.stringify(statsData));
+      console.log(`✅ Imported ${statsData.length} player stats for leaderboard`);
+    }
+
+    // 6. Load game history count
+    const gameHistoryPath = path.join(__dirname, '../data/game_history.json');
+    if (fs.existsSync(gameHistoryPath)) {
+      const gameData = JSON.parse(fs.readFileSync(gameHistoryPath, 'utf8'));
+      await redisClient.set('leaderboard:game_count', gameData.length.toString());
+      console.log(`✅ Imported game count: ${gameData.length}`);
+    }
+
     // Mark as imported
     await redisClient.set('data_imported', '1');
     console.log('✅ Data import complete!');

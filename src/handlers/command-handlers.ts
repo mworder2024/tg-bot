@@ -98,8 +98,8 @@ export async function handleStatsCommand(ctx: Context): Promise<void> {
  */
 export async function handlePrizeStatsCommand(ctx: Context): Promise<void> {
   try {
-    const prizeStats = prizeManager.getPrizeStats();
-    const recentPrizes = prizeManager.getRecentPrizes(20);
+    const prizeStats = await prizeManager.getPrizeStatsAsync();
+    const recentPrizes = await prizeManager.getRecentPrizesAsync(20);
     const recentWinners = await prizeManager.getRecentWinnersAsync(20);
     
     let statsMessage = '💰 **PRIZE STATISTICS** 💰\n\n';

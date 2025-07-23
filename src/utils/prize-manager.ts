@@ -340,6 +340,33 @@ class PrizeManager {
   }
 
   /**
+   * Get recent prizes (last N) - async version
+   */
+  async getRecentPrizesAsync(limit: number = 10): Promise<PrizeLog[]> {
+    try {
+      // Try Redis first
+      const redisClient = getRedisClient();
+      if (redisClient) {
+        try {
+          const prizeData = await redisClient.get('prizes:log');
+          if (prizeData) {
+            const prizes: PrizeLog[] = JSON.parse(prizeData);
+            return prizes.slice(-limit).reverse();
+          }
+        } catch (redisError) {
+          console.error('Redis error, falling back to file:', redisError);
+        }
+      }
+
+      // Fall back to file
+      return this.getRecentPrizes(limit);
+    } catch (error) {
+      console.error('❌ Error getting recent prizes:', error);
+      return [];
+    }
+  }
+
+  /**
    * Get recent prizes (last N)
    */
   getRecentPrizes(limit: number = 10): PrizeLog[] {
