@@ -1,0 +1,24 @@
+[features]
+seeds = false
+skip-lint = false
+
+[programs.localnet]
+telegram_lottery = "11111111111111111111111111111111"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "Localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "npx mocha -t 1000000 tests/"
+
+[[test.genesis]]
+address = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+program = "tests/fixtures/spl_associated_token_account.so"
+
+[[test.genesis]]
+address = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+program = "tests/fixtures/spl_token.so"

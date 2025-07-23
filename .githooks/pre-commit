@@ -1,0 +1,31 @@
+#!/bin/bash
+# Claude Flow Enhanced Pre-commit Hook
+
+echo "🔍 Claude Flow: Running pre-commit workflow enforcement..."
+
+# Run Claude Flow workflow enforcer
+node .claude/commands/enforce-workflow.js pre-commit
+
+# Store the exit code
+RESULT=$?
+
+# If workflow enforcement failed, exit
+if [ $RESULT -ne 0 ]; then
+    echo "❌ Pre-commit checks failed. Please fix issues before committing."
+    exit 1
+fi
+
+# Additional Claude Flow integration
+echo "📊 Updating Claude Flow metrics..."
+
+# Log commit to Claude Flow memory (if available)
+if command -v npx &> /dev/null && npx claude-flow@alpha --version &> /dev/null 2>&1; then
+    COMMIT_MSG=$(git diff --cached --name-only | head -1)
+    npx claude-flow@alpha hooks pre-commit \
+        --files "$(git diff --cached --name-only | tr '\n' ',')" \
+        --message "Pre-commit check passed" \
+        --silent
+fi
+
+echo "✅ Claude Flow: Pre-commit checks passed!"
+exit 0

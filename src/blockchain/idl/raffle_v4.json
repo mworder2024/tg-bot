@@ -1,0 +1,240 @@
+{
+  "version": "0.1.0",
+  "name": "raffle_v4",
+  "instructions": [
+    {
+      "name": "initialize",
+      "accounts": [
+        {
+          "name": "raffle",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "authority",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "ticketPrice",
+          "type": "u64"
+        },
+        {
+          "name": "maxParticipants",
+          "type": "u32"
+        },
+        {
+          "name": "maxNumber",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "joinRaffle",
+      "accounts": [
+        {
+          "name": "raffle",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "participant",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "selectedNumber",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "drawNumber",
+      "accounts": [
+        {
+          "name": "raffle",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "authority",
+          "isMut": false,
+          "isSigner": true
+        }
+      ],
+      "args": [
+        {
+          "name": "randomValue",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "claimPrize",
+      "accounts": [
+        {
+          "name": "raffle",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "winner",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "cancelRaffle",
+      "accounts": [
+        {
+          "name": "raffle",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "authority",
+          "isMut": true,
+          "isSigner": true
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Raffle",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "publicKey"
+          },
+          {
+            "name": "winner",
+            "type": {
+              "option": "publicKey"
+            }
+          },
+          {
+            "name": "participants",
+            "type": {
+              "vec": "publicKey"
+            }
+          },
+          {
+            "name": "drawnNumbers",
+            "type": {
+              "vec": "u32"
+            }
+          },
+          {
+            "name": "ticketPrice",
+            "type": "u64"
+          },
+          {
+            "name": "totalPrize",
+            "type": "u64"
+          },
+          {
+            "name": "state",
+            "type": "u8"
+          },
+          {
+            "name": "maxParticipants",
+            "type": "u32"
+          },
+          {
+            "name": "maxNumber",
+            "type": "u32"
+          },
+          {
+            "name": "createdAt",
+            "type": "i64"
+          },
+          {
+            "name": "endedAt",
+            "type": {
+              "option": "i64"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "types": [
+    {
+      "name": "RaffleState",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Active"
+          },
+          {
+            "name": "Drawing"
+          },
+          {
+            "name": "Completed"
+          },
+          {
+            "name": "Cancelled"
+          }
+        ]
+      }
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "RaffleFull",
+      "msg": "Raffle is full"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidNumber",
+      "msg": "Invalid number selected"
+    },
+    {
+      "code": 6002,
+      "name": "NumberAlreadyTaken",
+      "msg": "Number already taken"
+    },
+    {
+      "code": 6003,
+      "name": "NotAuthority",
+      "msg": "Only authority can perform this action"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidState",
+      "msg": "Invalid raffle state"
+    },
+    {
+      "code": 6005,
+      "name": "NotWinner",
+      "msg": "You are not the winner"
+    }
+  ]
+}

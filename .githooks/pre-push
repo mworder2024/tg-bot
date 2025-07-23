@@ -1,0 +1,19 @@
+#!/bin/bash
+# Claude Flow Pre-push Hook
+
+echo "🔍 Claude Flow: Running pre-push workflow enforcement..."
+
+# Run Claude Flow workflow enforcer
+node .claude/commands/enforce-workflow.js pre-push
+
+# Store the exit code
+RESULT=$?
+
+# If workflow enforcement failed, exit
+if [ $RESULT -ne 0 ]; then
+    echo "❌ Pre-push checks failed."
+    exit 1
+fi
+
+echo "✅ Claude Flow: Pre-push checks passed!"
+exit 0

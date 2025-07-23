@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lottery Game</title>
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .lottery-card {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .status {
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        .active { background: #28a745; color: white; }
+        .drawing { background: #ffc107; color: black; }
+        .completed { background: #6c757d; color: white; }
+        #walletStatus {
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #e9ecef;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎲 Lottery Game</h1>
+        
+        <div id="walletStatus">
+            <button id="connectWallet" class="btn">Connect Wallet</button>
+            <span id="walletAddress"></span>
+        </div>
+
+        <div id="activeLotteries">
+            <h2>Active Lotteries</h2>
+            <div id="lotteryList">Loading...</div>
+        </div>
+
+        <div id="myTickets">
+            <h2>My Tickets</h2>
+            <div id="ticketList">Connect wallet to see tickets</div>
+        </div>
+    </div>
+
+    <script>
+        // Simple lottery web client
+        let walletAddress = null;
+        let socket = null;
+
+        // Connect to Socket.io
+        function initSocket() {
+            socket = io();
+            
+            socket.on('lottery_update', (data) => {
+                console.log('Lottery update:', data);
+                loadActiveLotteries();
+            });
+
+            socket.on('draw_result', (data) => {
+                alert(`🎉 Draw complete! Winners: ${data.winners.join(', ')}`);
+                loadActiveLotteries();
+            });
+        }
+
+        // Connect Solana wallet
+        async function connectWallet() {
+            try {
+                const resp = await window.solana.connect();
+                walletAddress = resp.publicKey.toString();
+                document.getElementById('walletAddress').textContent = 
+                    `Connected: ${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}`;
+                document.getElementById('connectWallet').style.display = 'none';
+                
+                loadMyTickets();
+            } catch (err) {
+                alert('Please install Phantom wallet');
+            }
+        }
+
+        // Load active lotteries
+        async function loadActiveLotteries() {
+            try {
+                const resp = await fetch('/api/lottery/active');
+                const data = await resp.json();
+                
+                const html = data.lotteries.map(lottery => `
+                    <div class="lottery-card">
+                        <h3>${lottery.type || 'Instant'} Lottery #${lottery.id}</h3>
+                        <p>Players: ${lottery.player_count || 0}</p>
+                        <p>Status: <span class="status ${lottery.status}">${lottery.status}</span></p>
+                        <p>Draw Time: ${new Date(lottery.draw_time).toLocaleString()}</p>
+                        ${lottery.status === 'active' ? 
+                            `<button class="btn" onclick="joinLottery('${lottery.id}')">Join Lottery</button>` : 
+                            ''
+                        }
+                    </div>
+                `).join('');
+                
+                document.getElementById('lotteryList').innerHTML = html || 'No active lotteries';
+            } catch (err) {
+                console.error('Error loading lotteries:', err);
+            }
+        }
+
+        // Join lottery
+        async function joinLottery(gameId) {
+            if (!walletAddress) {
+                alert('Please connect wallet first');
+                return;
+            }
+
+            const numbers = prompt('Enter 6 numbers (1-49) separated by commas:');
+            if (!numbers) return;
+
+            const numberArray = numbers.split(',').map(n => parseInt(n.trim()));
+            
+            try {
+                const resp = await fetch('/api/lottery/join', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        gameId,
+                        walletAddress,
+                        numbers: numberArray
+                    })
+                });
+                
+                const data = await resp.json();
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    alert('Successfully joined lottery!');
+                    loadActiveLotteries();
+                    loadMyTickets();
+                }
+            } catch (err) {
+                alert('Error joining lottery');
+            }
+        }
+
+        // Load my tickets
+        async function loadMyTickets() {
+            if (!walletAddress) return;
+
+            try {
+                const resp = await fetch(`/api/lottery/tickets?wallet=${walletAddress}`);
+                const data = await resp.json();
+                
+                const html = data.tickets.map(ticket => `
+                    <div class="lottery-card">
+                        <p>Game #${ticket.game_id}</p>
+                        <p>Numbers: ${ticket.numbers.join(', ')}</p>
+                        <p>Status: ${ticket.is_winner ? '🎉 Winner!' : 'Pending'}</p>
+                    </div>
+                `).join('');
+                
+                document.getElementById('ticketList').innerHTML = html || 'No tickets';
+            } catch (err) {
+                console.error('Error loading tickets:', err);
+            }
+        }
+
+        // Initialize
+        document.getElementById('connectWallet').onclick = connectWallet;
+        initSocket();
+        loadActiveLotteries();
+        
+        // Auto-refresh
+        setInterval(loadActiveLotteries, 30000);
+    </script>
+</body>
+</html>

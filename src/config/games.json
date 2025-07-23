@@ -1,0 +1,264 @@
+{
+  "-1002330414734": {
+    "id": "-1002330414734_1753232866460",
+    "gameId": "URQCCQ",
+    "creator": 5970380897,
+    "players": [
+      [
+        "5970380897",
+        {
+          "id": "5970380897",
+          "username": "memeworldorder",
+          "joinedAt": "2025-07-23T01:07:46.460Z"
+        }
+      ],
+      [
+        "7818203588",
+        {
+          "id": "7818203588",
+          "username": "Pachenko_14",
+          "joinedAt": "2025-07-23T01:07:56.325Z"
+        }
+      ],
+      [
+        "7865743090",
+        {
+          "id": "7865743090",
+          "username": "donny_et",
+          "joinedAt": "2025-07-23T01:08:31.690Z"
+        }
+      ],
+      [
+        "7141119721",
+        {
+          "id": "7141119721",
+          "username": "Rare_May",
+          "joinedAt": "2025-07-23T01:08:37.807Z"
+        }
+      ],
+      [
+        "7557145742",
+        {
+          "id": "7557145742",
+          "username": "Kim_berly999",
+          "joinedAt": "2025-07-23T01:08:50.738Z"
+        }
+      ],
+      [
+        "1893934628",
+        {
+          "id": "1893934628",
+          "username": "thatneusguy",
+          "joinedAt": "2025-07-23T01:08:59.019Z"
+        }
+      ],
+      [
+        "6098929742",
+        {
+          "id": "6098929742",
+          "username": "lsyontg",
+          "joinedAt": "2025-07-23T01:09:11.598Z"
+        }
+      ],
+      [
+        "6689543844",
+        {
+          "id": "6689543844",
+          "username": "badass_shakers2",
+          "joinedAt": "2025-07-23T01:09:12.253Z"
+        }
+      ],
+      [
+        "1824298261",
+        {
+          "id": "1824298261",
+          "username": "sam_web3r",
+          "joinedAt": "2025-07-23T01:09:20.979Z"
+        }
+      ],
+      [
+        "8011535257",
+        {
+          "id": "8011535257",
+          "username": "TheConny",
+          "joinedAt": "2025-07-23T01:09:22.744Z"
+        }
+      ],
+      [
+        "6711798045",
+        {
+          "id": "6711798045",
+          "username": "musky_btcs",
+          "joinedAt": "2025-07-23T01:09:28.028Z"
+        }
+      ],
+      [
+        "8138718993",
+        {
+          "id": "8138718993",
+          "username": "LeviPCalls",
+          "joinedAt": "2025-07-23T01:09:36.464Z"
+        }
+      ],
+      [
+        "5669334038",
+        {
+          "id": "5669334038",
+          "username": "Reno_web3",
+          "joinedAt": "2025-07-23T01:09:44.000Z"
+        }
+      ],
+      [
+        "7122086008",
+        {
+          "id": "7122086008",
+          "username": "flexybtc",
+          "joinedAt": "2025-07-23T01:11:25.556Z"
+        }
+      ],
+      [
+        "6974848405",
+        {
+          "id": "6974848405",
+          "username": "Joe panda 🐼",
+          "joinedAt": "2025-07-23T01:12:13.572Z"
+        }
+      ],
+      [
+        "5903901720",
+        {
+          "id": "5903901720",
+          "username": "Leeena888",
+          "joinedAt": "2025-07-23T01:43:19.248Z"
+        }
+      ]
+    ],
+    "state": "WAITING",
+    "numberSelections": [],
+    "createdAt": "2025-07-23T01:07:46.460Z",
+    "maxPlayers": 50,
+    "numberRange": {
+      "min": 1,
+      "max": 2
+    },
+    "winnerCount": 1,
+    "selectionMultiplier": 2,
+    "startMinutes": 5,
+    "chatId": -1002330414734,
+    "scheduledStartTime": "2025-07-23T01:12:46.460Z",
+    "startedAt": null,
+    "endedAt": null
+  },
+  "-1002633946257": {
+    "id": "-1002633946257_1753226028823",
+    "gameId": "0PCLMM",
+    "creator": 5970380897,
+    "players": [
+      [
+        "5970380897",
+        {
+          "id": "5970380897",
+          "username": "memeworldorder",
+          "joinedAt": "2025-07-22T23:13:48.823Z"
+        }
+      ],
+      [
+        "7818203588",
+        {
+          "id": "7818203588",
+          "username": "Pachenko_14",
+          "joinedAt": "2025-07-22T23:14:35.356Z"
+        }
+      ],
+      [
+        "1893934628",
+        {
+          "id": "1893934628",
+          "username": "thatneusguy",
+          "joinedAt": "2025-07-22T23:15:11.087Z"
+        }
+      ],
+      [
+        "5228498784",
+        {
+          "id": "5228498784",
+          "username": "Glayzz_4T9ne_XD",
+          "joinedAt": "2025-07-22T23:15:34.306Z"
+        }
+      ],
+      [
+        "6098929742",
+        {
+          "id": "6098929742",
+          "username": "lsyontg",
+          "joinedAt": "2025-07-22T23:15:43.990Z"
+        }
+      ],
+      [
+        "1824298261",
+        {
+          "id": "1824298261",
+          "username": "sam_web3r",
+          "joinedAt": "2025-07-22T23:15:51.167Z"
+        }
+      ]
+    ],
+    "state": "FINISHED",
+    "numberSelections": [
+      [
+        "5970380897",
+        [
+          7
+        ]
+      ],
+      [
+        "7818203588",
+        [
+          1
+        ]
+      ],
+      [
+        "1893934628",
+        [
+          8
+        ]
+      ],
+      [
+        "5228498784",
+        [
+          11
+        ]
+      ],
+      [
+        "6098929742",
+        [
+          2
+        ]
+      ],
+      [
+        "1824298261",
+        [
+          3
+        ]
+      ]
+    ],
+    "createdAt": "2025-07-22T23:13:48.823Z",
+    "maxPlayers": 50,
+    "numberRange": {
+      "min": 1,
+      "max": 12
+    },
+    "winnerCount": 1,
+    "selectionMultiplier": 2,
+    "startMinutes": 5,
+    "chatId": -1002633946257,
+    "scheduledStartTime": "2025-07-22T23:18:48.823Z",
+    "prizeInfo": {
+      "totalPrize": 19331,
+      "prizePerSurvivor": 19331,
+      "vrfProof": "28ccc6ed6768c038f34f0f2ec0fdca2a87c32ac15726898afbb4463440754d6c"
+    },
+    "startedAt": "2025-07-22T23:17:07.910Z",
+    "endedAt": "2025-07-22T23:21:42.913Z"
+  }
+}
