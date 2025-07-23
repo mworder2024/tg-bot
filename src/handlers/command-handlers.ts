@@ -100,7 +100,7 @@ export async function handlePrizeStatsCommand(ctx: Context): Promise<void> {
   try {
     const prizeStats = prizeManager.getPrizeStats();
     const recentPrizes = prizeManager.getRecentPrizes(20);
-    const recentWinners = prizeManager.getRecentWinners(20);
+    const recentWinners = await prizeManager.getRecentWinnersAsync(20);
     
     let statsMessage = '💰 **PRIZE STATISTICS** 💰\n\n';
     statsMessage += `💸 Total Prizes Paid: ${prizeStats.totalPaid.toLocaleString()}\n`;
@@ -145,7 +145,7 @@ export async function handlePrizeStatsCommand(ctx: Context): Promise<void> {
  */
 export async function handleWinnerStatsCommand(ctx: Context): Promise<void> {
   try {
-    const userWinnings = prizeManager.getUserWinnings();
+    const userWinnings = await prizeManager.getUserWinningsAsync();
     const topWinners = userWinnings.slice(0, 20);
     
     let winnersMessage = '🏆 **TOP WINNERS** 🏆\n\n';

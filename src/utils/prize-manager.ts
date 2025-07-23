@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { VRF } from './vrf';
+import { getRedisClient } from './redis-client';
 
 export interface PrizeLog {
   gameId: string;
@@ -184,6 +185,39 @@ class PrizeManager {
   /**
    * Get user winnings statistics
    */
+  async getUserWinningsAsync(): Promise<UserWinnings[]> {
+    try {
+      // Try Redis first
+      const redisClient = getRedisClient();
+      if (redisClient) {
+        try {
+          const winnersData = await redisClient.get('winners:log');
+          if (winnersData) {
+            const winners: WinnerLog[] = JSON.parse(winnersData);
+            return this.processWinnerData(winners);
+          }
+        } catch (redisError) {
+          console.error('Redis error, falling back to file:', redisError);
+        }
+      }
+
+      // Fall back to file
+      if (!fs.existsSync(this.winnersLogPath)) {
+        return [];
+      }
+
+      const data = fs.readFileSync(this.winnersLogPath, 'utf8');
+      const winners: WinnerLog[] = JSON.parse(data);
+      return this.processWinnerData(winners);
+    } catch (error) {
+      console.error('❌ Error getting user winnings:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Synchronous version for backward compatibility
+   */
   getUserWinnings(): UserWinnings[] {
     try {
       if (!fs.existsSync(this.winnersLogPath)) {
@@ -192,7 +226,18 @@ class PrizeManager {
 
       const data = fs.readFileSync(this.winnersLogPath, 'utf8');
       const winners: WinnerLog[] = JSON.parse(data);
-      
+      return this.processWinnerData(winners);
+    } catch (error) {
+      console.error('❌ Error getting user winnings:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Process winner data into user winnings
+   */
+  private processWinnerData(winners: WinnerLog[]): UserWinnings[] {
+    try {
       const userMap = new Map<string, UserWinnings>();
 
       for (const winner of winners) {
@@ -275,7 +320,40 @@ class PrizeManager {
   }
 
   /**
-   * Get recent winners (last N games)
+   * Get recent winners (last N games) - async version
+   */
+  async getRecentWinnersAsync(limit: number = 20): Promise<WinnerLog[]> {
+    try {
+      // Try Redis first
+      const redisClient = getRedisClient();
+      if (redisClient) {
+        try {
+          const winnersData = await redisClient.get('winners:log');
+          if (winnersData) {
+            const winners: WinnerLog[] = JSON.parse(winnersData);
+            return this.processRecentWinners(winners, limit);
+          }
+        } catch (redisError) {
+          console.error('Redis error, falling back to file:', redisError);
+        }
+      }
+
+      // Fall back to file
+      if (!fs.existsSync(this.winnersLogPath)) {
+        return [];
+      }
+
+      const data = fs.readFileSync(this.winnersLogPath, 'utf8');
+      const winners: WinnerLog[] = JSON.parse(data);
+      return this.processRecentWinners(winners, limit);
+    } catch (error) {
+      console.error('❌ Error getting recent winners:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get recent winners (last N games) - sync version for backward compatibility
    */
   getRecentWinners(limit: number = 20): WinnerLog[] {
     try {
@@ -285,31 +363,37 @@ class PrizeManager {
 
       const data = fs.readFileSync(this.winnersLogPath, 'utf8');
       const winners: WinnerLog[] = JSON.parse(data);
-      
-      // Get unique game IDs from the most recent winners
-      const recentGameIds = new Set<string>();
-      const recentWinners: WinnerLog[] = [];
-      
-      // Start from the end and work backwards
-      for (let i = winners.length - 1; i >= 0 && recentGameIds.size < limit; i--) {
-        const winner = winners[i];
-        if (!recentGameIds.has(winner.gameId)) {
-          recentGameIds.add(winner.gameId);
-        }
-      }
-      
-      // Now get all winners for these recent games
-      for (const winner of winners) {
-        if (recentGameIds.has(winner.gameId)) {
-          recentWinners.push(winner);
-        }
-      }
-      
-      return recentWinners;
+      return this.processRecentWinners(winners, limit);
     } catch (error) {
       console.error('❌ Error getting recent winners:', error);
       return [];
     }
+  }
+
+  /**
+   * Process recent winners data
+   */
+  private processRecentWinners(winners: WinnerLog[], limit: number): WinnerLog[] {
+    // Get unique game IDs from the most recent winners
+    const recentGameIds = new Set<string>();
+    const recentWinners: WinnerLog[] = [];
+    
+    // Start from the end and work backwards
+    for (let i = winners.length - 1; i >= 0 && recentGameIds.size < limit; i--) {
+      const winner = winners[i];
+      if (!recentGameIds.has(winner.gameId)) {
+        recentGameIds.add(winner.gameId);
+      }
+    }
+    
+    // Now get all winners for these recent games
+    for (const winner of winners) {
+      if (recentGameIds.has(winner.gameId)) {
+        recentWinners.push(winner);
+      }
+    }
+    
+    return recentWinners;
   }
 
   /**
