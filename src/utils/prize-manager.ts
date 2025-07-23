@@ -149,6 +149,38 @@ class PrizeManager {
   }
 
   /**
+   * Get prize statistics - async version
+   */
+  async getPrizeStatsAsync(): Promise<{
+    totalPaid: number;
+    totalGames: number;
+    averagePrize: number;
+    lastPrize: PrizeLog | null;
+  }> {
+    try {
+      // Try Redis first
+      const redisClient = getRedisClient();
+      if (redisClient) {
+        try {
+          const prizeData = await redisClient.get('prizes:log');
+          if (prizeData) {
+            const prizes: PrizeLog[] = JSON.parse(prizeData);
+            return this.calculatePrizeStats(prizes);
+          }
+        } catch (redisError) {
+          console.error('Redis error, falling back to file:', redisError);
+        }
+      }
+
+      // Fall back to file
+      return this.getPrizeStats();
+    } catch (error) {
+      console.error('❌ Error getting prize stats:', error);
+      return { totalPaid: 0, totalGames: 0, averagePrize: 0, lastPrize: null };
+    }
+  }
+
+  /**
    * Get prize statistics
    */
   getPrizeStats(): {
@@ -165,21 +197,28 @@ class PrizeManager {
       const data = fs.readFileSync(this.prizeLogPath, 'utf8');
       const prizes: PrizeLog[] = JSON.parse(data);
       
-      const totalPaid = prizes.reduce((total, prize) => total + prize.prizeAmount, 0);
-      const totalGames = prizes.length;
-      const averagePrize = totalGames > 0 ? totalPaid / totalGames : 0;
-      const lastPrize = prizes.length > 0 ? prizes[prizes.length - 1] : null;
-
-      return {
-        totalPaid,
-        totalGames,
-        averagePrize,
-        lastPrize
-      };
+      return this.calculatePrizeStats(prizes);
     } catch (error) {
       console.error('❌ Error getting prize stats:', error);
       return { totalPaid: 0, totalGames: 0, averagePrize: 0, lastPrize: null };
     }
+  }
+
+  /**
+   * Calculate prize statistics from data
+   */
+  private calculatePrizeStats(prizes: PrizeLog[]): {
+    totalPaid: number;
+    totalGames: number;
+    averagePrize: number;
+    lastPrize: PrizeLog | null;
+  } {
+    const totalPaid = prizes.reduce((total, prize) => total + prize.prizeAmount, 0);
+    const totalGames = prizes.length;
+    const averagePrize = totalGames > 0 ? totalPaid / totalGames : 0;
+    const lastPrize = prizes.length > 0 ? prizes[prizes.length - 1] : null;
+    
+    return { totalPaid, totalGames, averagePrize, lastPrize };
   }
 
   /**

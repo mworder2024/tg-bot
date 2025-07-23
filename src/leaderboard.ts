@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { getRedisClient } from './utils/redis-client';
 
 export interface PlayerStats {
   userId: string;
@@ -37,6 +38,39 @@ class LeaderboardManager {
     // Ensure data directory exists
     if (!fs.existsSync(this.dataPath)) {
       fs.mkdirSync(this.dataPath, { recursive: true });
+    }
+  }
+
+  private async loadPlayerStatsAsync(): Promise<Map<string, PlayerStats>> {
+    try {
+      // Try Redis first
+      const redisClient = getRedisClient();
+      if (redisClient) {
+        try {
+          const statsData = await redisClient.get('leaderboard:stats');
+          if (statsData) {
+            const statsArray = JSON.parse(statsData);
+            const statsMap = new Map<string, PlayerStats>();
+            
+            for (const stats of statsArray) {
+              statsMap.set(stats.userId, {
+                ...stats,
+                lastPlayed: new Date(stats.lastPlayed)
+              });
+            }
+            
+            return statsMap;
+          }
+        } catch (redisError) {
+          console.error('Redis error, falling back to file:', redisError);
+        }
+      }
+
+      // Fall back to file
+      return this.loadPlayerStats();
+    } catch (error) {
+      console.error('Error loading player stats async:', error);
+      return new Map<string, PlayerStats>();
     }
   }
 
@@ -153,6 +187,29 @@ class LeaderboardManager {
     this.saveGameHistory(games);
   }
 
+  public async getLeaderboardAsync(limit: number = 20): Promise<PlayerStats[]> {
+    const stats = await this.loadPlayerStatsAsync();
+    const statsArray = Array.from(stats.values());
+    
+    // Sort by wins (descending), then by win rate, then by games played
+    return statsArray
+      .sort((a, b) => {
+        if (b.gamesWon !== a.gamesWon) {
+          return b.gamesWon - a.gamesWon;
+        }
+        
+        const aWinRate = a.gamesEntered > 0 ? a.gamesWon / a.gamesEntered : 0;
+        const bWinRate = b.gamesEntered > 0 ? b.gamesWon / b.gamesEntered : 0;
+        
+        if (Math.abs(bWinRate - aWinRate) > 0.001) {
+          return bWinRate - aWinRate;
+        }
+        
+        return b.gamesEntered - a.gamesEntered;
+      })
+      .slice(0, limit);
+  }
+
   public getLeaderboard(limit: number = 20): PlayerStats[] {
     const stats = this.loadPlayerStats();
     const statsArray = Array.from(stats.values());
@@ -176,9 +233,32 @@ class LeaderboardManager {
       .slice(0, limit);
   }
 
+  public async getPlayerStatsAsync(userId: string): Promise<PlayerStats | null> {
+    const stats = await this.loadPlayerStatsAsync();
+    return stats.get(userId) || null;
+  }
+
   public getPlayerStats(userId: string): PlayerStats | null {
     const stats = this.loadPlayerStats();
     return stats.get(userId) || null;
+  }
+
+  public async getTotalGamesAsync(): Promise<number> {
+    // Try Redis first for game count
+    const redisClient = getRedisClient();
+    if (redisClient) {
+      try {
+        const gameCount = await redisClient.get('leaderboard:game_count');
+        if (gameCount) {
+          return parseInt(gameCount, 10);
+        }
+      } catch (redisError) {
+        console.error('Redis error getting game count:', redisError);
+      }
+    }
+    
+    // Fall back to file
+    return this.getTotalGames();
   }
 
   public getTotalGames(): number {
@@ -191,6 +271,12 @@ class LeaderboardManager {
     return games
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
       .slice(0, limit);
+  }
+
+  public async getPlayerRankAsync(userId: string): Promise<number | null> {
+    const leaderboardData = await this.getLeaderboardAsync(1000);
+    const index = leaderboardData.findIndex(player => player.userId === userId);
+    return index >= 0 ? index + 1 : null;
   }
 
   public getPlayerRank(userId: string): number | null {

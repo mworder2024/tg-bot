@@ -9,8 +9,8 @@ import { escapeUsername } from '../utils/markdown-escape';
  */
 export async function handleLeaderboardCommand(ctx: Context): Promise<void> {
   try {
-    const topPlayers = leaderboard.getLeaderboard(15);
-    const totalGames = leaderboard.getTotalGames();
+    const topPlayers = await leaderboard.getLeaderboardAsync(15);
+    const totalGames = await leaderboard.getTotalGamesAsync();
     
     if (topPlayers.length === 0) {
       await ctx.reply('🏆 No games played yet!\n\nUse /create to start the first lottery!');
@@ -59,7 +59,7 @@ export async function handleStatsCommand(ctx: Context): Promise<void> {
   try {
     const userId = ctx.from!.id.toString();
     const username = ctx.from!.username || ctx.from!.first_name || 'Player';
-    const stats = leaderboard.getPlayerStats(userId);
+    const stats = await leaderboard.getPlayerStatsAsync(userId);
     
     let statsMessage = `📊 STATS FOR ${username.toUpperCase()} 📊\n\n`;
     
@@ -67,7 +67,7 @@ export async function handleStatsCommand(ctx: Context): Promise<void> {
       statsMessage += `No games played yet!\n\nUse /join to enter a lottery!`;
     } else {
       const winRate = (stats.gamesWon / stats.gamesEntered * 100).toFixed(1);
-      const globalRank = leaderboard.getPlayerRank(userId);
+      const globalRank = await leaderboard.getPlayerRankAsync(userId);
       
       statsMessage += `🏆 Rank: #${globalRank || 'Unranked'}\n`;
       statsMessage += `🏅 Games Won: ${stats.gamesWon}\n`;
