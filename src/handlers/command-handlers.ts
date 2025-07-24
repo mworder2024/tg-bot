@@ -155,18 +155,15 @@ export async function handleWinnerStatsCommand(ctx: Context): Promise<void> {
     if (topWinners.length === 0) {
       winnersMessage += 'No winners yet!';
     } else {
-      winnersMessage += '```\n';
       topWinners.forEach((winner, index) => {
-        const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+        const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${(index + 1).toString().padEnd(2, ' ')}.`;
         const username = winner.username || 'Unknown';
-        // Pad rank to 4 chars, username to 18 chars for alignment
-        const rank = medal.padEnd(4, ' ');
         const paddedUsername = username.padEnd(18, ' ');
-        const tokens = winner.totalWinnings.toLocaleString().padStart(8, ' ');
+        const tokens = winner.totalWinnings.toLocaleString().padStart(9, ' ');
         const wins = winner.gamesWon;
-        winnersMessage += `${rank}${paddedUsername} 💰 ${tokens} tokens (🏆 ${wins} wins)\n`;
+        const winText = wins === 1 ? 'win' : 'wins';
+        winnersMessage += `${medal}  ${paddedUsername} 💰 ${tokens} tokens (🏆 ${wins} ${winText})\n`;
       });
-      winnersMessage += '```';
     }
     
     await ctx.reply(winnersMessage, { parse_mode: 'Markdown' });

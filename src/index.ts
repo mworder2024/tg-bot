@@ -1997,18 +1997,6 @@ bot.command('stats', async (ctx): Promise<any> => {
     statsMessage += `Last Played:   ${lastPlayed}\n`;
     statsMessage += `\`\`\`\n`;
     
-    if (playerStats.winningNumbers.length > 0) {
-      statsMessage += `\n🔢 **Winning Numbers:**\n`;
-      const recentWinning = playerStats.winningNumbers.slice(-3).reverse();
-      statsMessage += `\`\`\`\n`;
-      for (const num of recentWinning) {
-        statsMessage += `🎯 ${num}\n`;
-      }
-      statsMessage += `\`\`\`\n`;
-    } else {
-      statsMessage += `\n🎯 No wins yet - keep trying!\n`;
-    }
-    
     // Show ranking
     const allPlayers = leaderboard.getLeaderboard(1000);
     const playerRank = allPlayers.findIndex(p => p.userId === userId) + 1;
