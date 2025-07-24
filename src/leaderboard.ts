@@ -40,8 +40,10 @@ class LeaderboardManager {
       fs.mkdirSync(this.dataPath, { recursive: true });
     }
 
-    // Migrate existing data to Redis on startup
-    this.migrateDataToRedis();
+    // Migrate existing data to Redis on startup (async, don't await in constructor)
+    this.migrateDataToRedis().catch(error => {
+      console.error('❌ Migration failed in constructor:', error);
+    });
   }
 
   private async migrateDataToRedis(): Promise<void> {

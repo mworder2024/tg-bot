@@ -19,7 +19,10 @@ class GroupManager {
   private readonly REDIS_KEY_GROUPS = 'bot:config:groups';
 
   constructor() {
-    this.loadConfig();
+    // Load config async without blocking constructor
+    this.loadConfig().catch(error => {
+      console.error('❌ Failed to load group config in constructor:', error);
+    });
   }
 
   private async loadConfig(): Promise<void> {

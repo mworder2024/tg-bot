@@ -2513,6 +2513,8 @@ async function startBot() {
     
   } catch (error: any) {
     logger.error('Failed to start bot:', error.message);
+    logger.error('Full error:', error);
+    console.error('❌ Startup failed:', error);
     process.exit(1);
   }
 }
