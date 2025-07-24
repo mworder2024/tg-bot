@@ -333,6 +333,17 @@ async function startGame(chatId: string) {
   const currentGame = getCurrentGame(chatId);
   if (!currentGame || currentGame.state !== 'WAITING') return;
   
+  // Check if approval is required and not yet approved
+  if (currentGame.requiresApproval && !currentGame.isApproved) {
+    messageQueue.enqueue({
+      type: 'announcement',
+      chatId: currentGame.chatId,
+      content: `⏸️ Game requires admin approval!\n\nAn admin must use /approve to start the game.`,
+      priority: 'high'
+    });
+    return;
+  }
+  
   // Check minimum players
   if (currentGame.players.size < 2) {
     messageQueue.enqueue({
@@ -931,6 +942,69 @@ bot.command('forcestart', async (ctx): Promise<any> => {
   gameTimerManager.cancelGame(currentGame.gameId);
   await ctx.reply('🚀 Force starting game...');
   startGame(chatId);
+});
+
+// Command: /approve (admin)
+bot.command('approve', async (ctx): Promise<any> => {
+  const userId = ctx.from!.id.toString();
+  const chatId = ctx.chat.id.toString();
+  
+  if (!isAdminUser(userId)) {
+    return ctx.reply('❌ Admin only command.');
+  }
+  
+  const currentGame = getCurrentGame(chatId);
+  if (!currentGame) {
+    return ctx.reply('❌ No game to approve.');
+  }
+  
+  if (!currentGame.requiresApproval) {
+    return ctx.reply('❌ This game does not require approval.');
+  }
+  
+  if (currentGame.isApproved) {
+    return ctx.reply('✅ Game is already approved.');
+  }
+  
+  if (currentGame.state !== 'WAITING') {
+    return ctx.reply(`❌ Cannot approve - game is ${currentGame.state}.`);
+  }
+  
+  // Approve the game
+  currentGame.isApproved = true;
+  
+  // Cancel the old timer
+  gameTimerManager.cancelGame(currentGame.gameId);
+  
+  // Schedule new start time from now
+  const newStartTime = gameTimerManager.scheduleGame(
+    currentGame.gameId,
+    chatId,
+    currentGame.startMinutes,
+    () => startGame(chatId)
+  );
+  
+  currentGame.scheduledStartTime = newStartTime;
+  
+  const startTimeStr = newStartTime.toLocaleTimeString([], { 
+    hour: '2-digit', 
+    minute: '2-digit' 
+  });
+  
+  const username = ctx.from!.username || ctx.from!.first_name || 'Admin';
+  
+  await ctx.reply(
+    `✅ **GAME APPROVED!**\n\n` +
+    `🎲 Game ID: \`${currentGame.gameId}\`\n` +
+    `👤 Approved by: ${username}\n` +
+    `⏰ **Starts at ${startTimeStr}** (in ${currentGame.startMinutes} minutes)\n` +
+    `👥 Players: ${currentGame.players.size}/${currentGame.maxPlayers}\n\n` +
+    `The countdown has begun! Use /join to participate.`,
+    { parse_mode: 'Markdown' }
+  );
+  
+  // Schedule announcement intervals
+  scheduleGameAnnouncements(chatId, currentGame, currentGame.startMinutes);
 });
 
 // Handle inline button callbacks
