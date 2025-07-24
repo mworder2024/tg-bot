@@ -38,12 +38,42 @@ class PrizeManager {
     this.prizeLogPath = path.join(__dirname, '../config/prize-log.json');
     this.winnersLogPath = path.join(__dirname, '../config/winners-log.json');
     this.ensureDirectoriesExist();
+    
+    // Migrate existing data to Redis on startup (async, don't await in constructor)
+    this.migrateDataToRedis().catch(error => {
+      console.error('❌ Prize data migration failed in constructor:', error);
+    });
   }
 
   private ensureDirectoriesExist(): void {
     const dir = path.dirname(this.prizeLogPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
+    }
+  }
+
+  private async migrateDataToRedis(): Promise<void> {
+    try {
+      const redisClient = getRedisClient();
+      if (!redisClient) return;
+
+      // Migrate prize log
+      if (fs.existsSync(this.prizeLogPath)) {
+        const prizeData = JSON.parse(fs.readFileSync(this.prizeLogPath, 'utf8'));
+        await redisClient.set('prizes:log', JSON.stringify(prizeData));
+        console.log(`✅ Migrated ${prizeData.length} prize records to Redis`);
+      }
+
+      // Migrate winners log
+      if (fs.existsSync(this.winnersLogPath)) {
+        const winnersData = JSON.parse(fs.readFileSync(this.winnersLogPath, 'utf8'));
+        await redisClient.set('winners:log', JSON.stringify(winnersData));
+        console.log(`✅ Migrated ${winnersData.length} winner records to Redis`);
+      }
+      
+      console.log('✅ Prize data migration to Redis completed');
+    } catch (error) {
+      console.error('❌ Error migrating prize data to Redis:', error);
     }
   }
 
@@ -335,6 +365,15 @@ class PrizeManager {
    */
   getUserTotalWinnings(userId: string): number {
     const userWinnings = this.getUserWinnings();
+    const user = userWinnings.find(u => u.userId === userId);
+    return user ? user.totalWinnings : 0;
+  }
+
+  /**
+   * Get specific user's total winnings (async - checks Redis first)
+   */
+  async getUserTotalWinningsAsync(userId: string): Promise<number> {
+    const userWinnings = await this.getUserWinningsAsync();
     const user = userWinnings.find(u => u.userId === userId);
     return user ? user.totalWinnings : 0;
   }

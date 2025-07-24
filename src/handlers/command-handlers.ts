@@ -71,7 +71,7 @@ export async function handleStatsCommand(ctx: Context): Promise<void> {
     } else {
       const winRate = (stats.gamesWon / stats.gamesEntered * 100).toFixed(1);
       const globalRank = await leaderboard.getPlayerRankAsync(userId);
-      const totalWinnings = prizeManager.getUserTotalWinnings(userId);
+      const totalWinnings = await prizeManager.getUserTotalWinningsAsync(userId);
       
       statsMessage += `🏆 Rank: #${globalRank || 'Unranked'}\n`;
       statsMessage += `🏅 Games Won: ${stats.gamesWon}\n`;
