@@ -100,8 +100,8 @@ function setCurrentGame(chatId: string, game: any): void {
   gamePersistence.saveGames(gameStates);
 }
 
-function isAdminUser(userId: string): boolean {
-  return groupManager.isAdmin(userId);
+async function isAdminUser(userId: string): Promise<boolean> {
+  return await groupManager.isAdmin(userId);
 }
 
 // Initialize group manager
@@ -131,7 +131,7 @@ bot.command('create', async (ctx) => {
   const username = ctx.from!.username || ctx.from!.first_name || 'Player';
   const chatId = ctx.chat.id.toString();
   
-  if (!groupManager.isGroupEnabled(chatId)) {
+  if (!(await groupManager.isGroupEnabled(chatId))) {
     return ctx.reply(
       `❌ Bot not configured for this group!\n\n` +
       `An admin needs to run /addgroup here first.`
@@ -139,7 +139,7 @@ bot.command('create', async (ctx) => {
   }
   
   // Check if user is admin
-  if (!isAdminUser(userId.toString())) {
+  if (!(await isAdminUser(userId.toString()))) {
     return ctx.reply('❌ Only admins can create games.');
   }
   
@@ -190,7 +190,7 @@ bot.command('create', async (ctx) => {
   newGame.scheduledStartTime = startTime;
   
   setCurrentGame(chatId, newGame);
-  leaderboard.recordPlayerEntry(userId.toString(), username);
+  leaderboard.recordPlayerEntrySync(userId.toString(), username);
   
   const survivorText = config.survivorsOverride 
     ? `${config.survivors} (manual)` 
@@ -256,7 +256,7 @@ bot.command('join', async (ctx) => {
   const username = ctx.from!.username || ctx.from!.first_name || 'Player';
   const chatId = ctx.chat.id.toString();
   
-  if (!groupManager.isGroupEnabled(chatId)) {
+  if (!(await groupManager.isGroupEnabled(chatId))) {
     // No response needed
     return;
   }
@@ -285,7 +285,7 @@ bot.command('join', async (ctx) => {
     joinedAt: new Date()
   });
   
-  leaderboard.recordPlayerEntry(userId, username);
+  leaderboard.recordPlayerEntrySync(userId, username);
   
   // Personal confirmation removed - only group announcement needed
   
@@ -836,7 +836,7 @@ async function finishGame(chatId: string, activePlayers: Set<string>) {
       });
       
       // Record in leaderboard
-      leaderboard.recordWin(playerId, player.username, survivorNumber);
+      leaderboard.recordWinSync(playerId, player.username, survivorNumber);
       
       // Log winner
       winnerLogs.push({
@@ -1060,7 +1060,7 @@ bot.action(/join_(.+)/, async (ctx) => {
     joinedAt: new Date()
   });
   
-  leaderboard.recordPlayerEntry(userId, username);
+  leaderboard.recordPlayerEntrySync(userId, username);
   
   // Personal confirmation removed - only group announcement needed
   
@@ -1207,7 +1207,7 @@ bot.command('addadmin', async (ctx): Promise<any> => {
     return ctx.reply('❌ You are already an admin!');
   }
 
-  if (groupManager.addAdmin(targetUserId)) {
+  if (await groupManager.addAdmin(targetUserId)) {
     await ctx.reply(
       `✅ **Admin Added Successfully!**\n\n` +
       `👤 User: ${targetUsername}\n` +
@@ -1261,7 +1261,7 @@ bot.command('deleteadmin', async (ctx): Promise<any> => {
     return ctx.reply('❌ Cannot remove super admin privileges!');
   }
 
-  if (groupManager.removeAdmin(targetUserId)) {
+  if (await groupManager.removeAdmin(targetUserId)) {
     await ctx.reply(
       `✅ **Admin Removed Successfully!**\n\n` +
       `👤 User: ${targetUsername}\n` +
@@ -2151,7 +2151,7 @@ bot.on('callback_query', async (ctx): Promise<any> => {
       });
       gamePersistence.saveGames(gameStates);
       
-      leaderboard.recordPlayerEntry(userId, username);
+      leaderboard.recordPlayerEntrySync(userId, username);
       
       // Queue join message
       messageQueue.enqueue({
@@ -2250,7 +2250,7 @@ bot.command('pauselottery', async (ctx): Promise<any> => {
     return ctx.reply('❌ Only admins can pause lottery games.');
   }
   
-  if (!groupManager.isGroupEnabled(chatId)) {
+  if (!(await groupManager.isGroupEnabled(chatId))) {
     return ctx.reply('❌ This group is not configured.');
   }
   
@@ -2296,7 +2296,7 @@ bot.command('resumelottery', async (ctx): Promise<any> => {
     return ctx.reply('❌ Only admins can resume lottery games.');
   }
   
-  if (!groupManager.isGroupEnabled(chatId)) {
+  if (!(await groupManager.isGroupEnabled(chatId))) {
     return ctx.reply('❌ This group is not configured.');
   }
   

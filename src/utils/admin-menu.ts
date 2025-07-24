@@ -136,8 +136,8 @@ export class AdminMenu {
   /**
    * Get group management menu
    */
-  getGroupMenu(): { text: string; keyboard: InlineKeyboardMarkup } {
-    const groups = groupManager.getGroups();
+  async getGroupMenu(): Promise<{ text: string; keyboard: InlineKeyboardMarkup }> {
+    const groups = await groupManager.getGroups();
     
     let text = '👥 **Group Management**\n\n';
     text += `Total Groups: ${groups.length}\n\n`;
@@ -310,7 +310,7 @@ export class AdminMenu {
 
       case 'groups':
         if (!action) {
-          const { text, keyboard } = this.getGroupMenu();
+          const { text, keyboard } = await this.getGroupMenu();
           await ctx.editMessageText(text, {
             parse_mode: 'Markdown',
             reply_markup: keyboard
@@ -452,7 +452,7 @@ export class AdminMenu {
   private async handleGroupAction(ctx: Context, action: string): Promise<void> {
     switch (action) {
       case 'list':
-        const groups = groupManager.getGroups();
+        const groups = await groupManager.getGroups();
         let message = '📋 **All Groups:**\n\n';
         
         groups.forEach((group: any, index: number) => {

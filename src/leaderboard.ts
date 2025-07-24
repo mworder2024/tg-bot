@@ -39,6 +39,36 @@ class LeaderboardManager {
     if (!fs.existsSync(this.dataPath)) {
       fs.mkdirSync(this.dataPath, { recursive: true });
     }
+
+    // Migrate existing data to Redis on startup
+    this.migrateDataToRedis();
+  }
+
+  private async migrateDataToRedis(): Promise<void> {
+    try {
+      const redisClient = getRedisClient();
+      if (!redisClient) return;
+
+      // Check if Redis already has stats data
+      const existingStats = await redisClient.get('leaderboard:stats');
+      if (existingStats) return; // Already migrated
+
+      // Load file data and save to Redis
+      const stats = this.loadPlayerStats();
+      if (stats.size > 0) {
+        await this.savePlayerStats(stats);
+        console.log(`Migrated ${stats.size} player stats to Redis`);
+      }
+
+      // Migrate game history if needed
+      const games = this.loadGameHistory();
+      if (games.length > 0) {
+        await redisClient.set('leaderboard:game_count', games.length.toString());
+        console.log(`Migrated ${games.length} game records to Redis`);
+      }
+    } catch (error) {
+      console.error('Error migrating data to Redis:', error);
+    }
   }
 
   private async loadPlayerStatsAsync(): Promise<Map<string, PlayerStats>> {
@@ -97,7 +127,28 @@ class LeaderboardManager {
     return new Map<string, PlayerStats>();
   }
 
-  private savePlayerStats(stats: Map<string, PlayerStats>): void {
+  private async savePlayerStats(stats: Map<string, PlayerStats>): Promise<void> {
+    try {
+      const statsArray = Array.from(stats.values());
+      
+      // Save to file
+      fs.writeFileSync(this.statsPath, JSON.stringify(statsArray, null, 2));
+      
+      // Also save to Redis for consistency
+      const redisClient = getRedisClient();
+      if (redisClient) {
+        try {
+          await redisClient.set('leaderboard:stats', JSON.stringify(statsArray));
+        } catch (redisError) {
+          console.error('Redis error saving stats:', redisError);
+        }
+      }
+    } catch (error) {
+      console.error('Error saving player stats:', error);
+    }
+  }
+
+  private savePlayerStatsSync(stats: Map<string, PlayerStats>): void {
     try {
       const statsArray = Array.from(stats.values());
       fs.writeFileSync(this.statsPath, JSON.stringify(statsArray, null, 2));
@@ -130,7 +181,7 @@ class LeaderboardManager {
     }
   }
 
-  public recordPlayerEntry(userId: string, username: string): void {
+  public async recordPlayerEntry(userId: string, username: string): Promise<void> {
     const stats = this.loadPlayerStats();
     
     if (stats.has(userId)) {
@@ -149,10 +200,32 @@ class LeaderboardManager {
       });
     }
     
-    this.savePlayerStats(stats);
+    await this.savePlayerStats(stats);
   }
 
-  public recordWin(userId: string, username: string, winningNumber: number): void {
+  public recordPlayerEntrySync(userId: string, username: string): void {
+    const stats = this.loadPlayerStats();
+    
+    if (stats.has(userId)) {
+      const playerStats = stats.get(userId)!;
+      playerStats.gamesEntered++;
+      playerStats.username = username; // Update username in case it changed
+      playerStats.lastPlayed = new Date();
+    } else {
+      stats.set(userId, {
+        userId,
+        username,
+        gamesEntered: 1,
+        gamesWon: 0,
+        lastPlayed: new Date(),
+        winningNumbers: []
+      });
+    }
+    
+    this.savePlayerStatsSync(stats);
+  }
+
+  public async recordWin(userId: string, username: string, winningNumber: number): Promise<void> {
     const stats = this.loadPlayerStats();
     
     if (stats.has(userId)) {
@@ -172,7 +245,30 @@ class LeaderboardManager {
       });
     }
     
-    this.savePlayerStats(stats);
+    await this.savePlayerStats(stats);
+  }
+
+  public recordWinSync(userId: string, username: string, winningNumber: number): void {
+    const stats = this.loadPlayerStats();
+    
+    if (stats.has(userId)) {
+      const playerStats = stats.get(userId)!;
+      playerStats.gamesWon++;
+      playerStats.winningNumbers.push(winningNumber);
+      playerStats.username = username;
+    } else {
+      // Shouldn't happen, but just in case
+      stats.set(userId, {
+        userId,
+        username,
+        gamesEntered: 1,
+        gamesWon: 1,
+        lastPlayed: new Date(),
+        winningNumbers: [winningNumber]
+      });
+    }
+    
+    this.savePlayerStatsSync(stats);
   }
 
   public recordGame(gameRecord: GameRecord): void {

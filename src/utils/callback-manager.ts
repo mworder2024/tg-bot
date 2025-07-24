@@ -152,12 +152,12 @@ class CallbackManager {
 
     if (data.startsWith('group_toggle_')) {
       const groupId = data.replace('group_toggle_', '');
-      groupManager.toggleEnabledGroup(groupId);
+      await groupManager.toggleEnabledGroup(groupId);
       await ctx.answerCbQuery('✅ Group toggled');
       await this.showGroupManagement(ctx);
     } else if (data.startsWith('group_remove_')) {
       const groupId = data.replace('group_remove_', '');
-      groupManager.removeGroup(groupId);
+      await groupManager.removeGroup(groupId);
       await ctx.answerCbQuery('✅ Group removed');
       await this.showGroupManagement(ctx);
     }
@@ -331,7 +331,7 @@ class CallbackManager {
    * Show group management menu
    */
   private async showGroupManagement(ctx: CallbackContext): Promise<void> {
-    const groups = groupManager.getGroups();
+    const groups = await groupManager.getGroups();
     const buttons = [];
 
     for (const group of groups) {

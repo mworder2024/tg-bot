@@ -1,5 +1,4 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import { getRedisClient } from './redis-client';
 
 interface GroupConfig {
   id: string;
@@ -15,71 +14,91 @@ interface ConfigData {
 }
 
 class GroupManager {
-  private configPath: string;
   private config: ConfigData = { admins: [], groups: {} };
+  private readonly REDIS_KEY_ADMINS = 'bot:config:admins';
+  private readonly REDIS_KEY_GROUPS = 'bot:config:groups';
 
   constructor() {
-    this.configPath = path.join(__dirname, '../config/groups.json');
     this.loadConfig();
   }
 
-  private loadConfig(): void {
+  private async loadConfig(): Promise<void> {
     try {
-      if (fs.existsSync(this.configPath)) {
-        const data = fs.readFileSync(this.configPath, 'utf8');
-        this.config = JSON.parse(data);
-      } else {
-        this.config = { admins: [], groups: {} };
-        this.saveConfig();
+      const redisClient = getRedisClient();
+      if (redisClient) {
+        // Load admins from Redis
+        const adminsData = await redisClient.get(this.REDIS_KEY_ADMINS);
+        if (adminsData) {
+          this.config.admins = JSON.parse(adminsData);
+        }
+
+        // Load groups from Redis
+        const groupsData = await redisClient.get(this.REDIS_KEY_GROUPS);
+        if (groupsData) {
+          const parsedGroups = JSON.parse(groupsData);
+          // Convert date strings back to Date objects
+          for (const groupId in parsedGroups) {
+            parsedGroups[groupId].addedAt = new Date(parsedGroups[groupId].addedAt);
+          }
+          this.config.groups = parsedGroups;
+        }
       }
     } catch (error) {
-      console.error('Error loading group config:', error);
+      console.error('Error loading config from Redis:', error);
       this.config = { admins: [], groups: {} };
     }
   }
 
-  private saveConfig(): void {
+  private async saveConfig(): Promise<void> {
     try {
-      const dir = path.dirname(this.configPath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
+      const redisClient = getRedisClient();
+      if (redisClient) {
+        // Save admins to Redis
+        await redisClient.set(this.REDIS_KEY_ADMINS, JSON.stringify(this.config.admins));
+        
+        // Save groups to Redis
+        await redisClient.set(this.REDIS_KEY_GROUPS, JSON.stringify(this.config.groups));
       }
-      fs.writeFileSync(this.configPath, JSON.stringify(this.config, null, 2));
     } catch (error) {
-      console.error('Error saving group config:', error);
+      console.error('Error saving config to Redis:', error);
     }
   }
 
   // Admin management
-  addAdmin(userId: string): boolean {
+  async addAdmin(userId: string): Promise<boolean> {
+    await this.loadConfig(); // Ensure we have latest data
     if (!this.config.admins.includes(userId)) {
       this.config.admins.push(userId);
-      this.saveConfig();
+      await this.saveConfig();
       return true;
     }
     return false;
   }
 
-  removeAdmin(userId: string): boolean {
+  async removeAdmin(userId: string): Promise<boolean> {
+    await this.loadConfig();
     const index = this.config.admins.indexOf(userId);
     if (index > -1) {
       this.config.admins.splice(index, 1);
-      this.saveConfig();
+      await this.saveConfig();
       return true;
     }
     return false;
   }
 
-  isAdmin(userId: string): boolean {
+  async isAdmin(userId: string): Promise<boolean> {
+    await this.loadConfig();
     return this.config.admins.includes(userId);
   }
 
-  getAdmins(): string[] {
+  async getAdmins(): Promise<string[]> {
+    await this.loadConfig();
     return [...this.config.admins];
   }
 
   // Group management
-  addGroup(groupId: string, groupName: string, addedBy: string): boolean {
+  async addGroup(groupId: string, groupName: string, addedBy: string): Promise<boolean> {
+    await this.loadConfig();
     if (!this.config.groups[groupId]) {
       this.config.groups[groupId] = {
         id: groupId,
@@ -88,81 +107,115 @@ class GroupManager {
         addedAt: new Date(),
         enabled: true
       };
-      this.saveConfig();
+      await this.saveConfig();
       return true;
     }
     return false;
   }
 
-  removeGroup(groupId: string): boolean {
+  async removeGroup(groupId: string): Promise<boolean> {
+    await this.loadConfig();
     if (this.config.groups[groupId]) {
       delete this.config.groups[groupId];
-      this.saveConfig();
+      await this.saveConfig();
       return true;
     }
     return false;
   }
 
-  enableGroup(groupId: string): boolean {
+  async enableGroup(groupId: string): Promise<boolean> {
+    await this.loadConfig();
     if (this.config.groups[groupId]) {
       this.config.groups[groupId].enabled = true;
-      this.saveConfig();
+      await this.saveConfig();
       return true;
     }
     return false;
   }
 
-  disableGroup(groupId: string): boolean {
+  async disableGroup(groupId: string): Promise<boolean> {
+    await this.loadConfig();
     if (this.config.groups[groupId]) {
       this.config.groups[groupId].enabled = false;
-      this.saveConfig();
+      await this.saveConfig();
       return true;
     }
     return false;
   }
 
-  isGroupEnabled(groupId: string): boolean {
+  async isGroupEnabled(groupId: string): Promise<boolean> {
+    await this.loadConfig();
     const group = this.config.groups[groupId];
     return group ? group.enabled : false;
   }
 
-  getGroups(): GroupConfig[] {
+  async getGroups(): Promise<GroupConfig[]> {
+    await this.loadConfig();
     return Object.values(this.config.groups);
   }
 
-  getEnabledGroups(): GroupConfig[] {
+  async getEnabledGroups(): Promise<GroupConfig[]> {
+    await this.loadConfig();
     return Object.values(this.config.groups).filter(group => group.enabled);
   }
 
-  getGroup(groupId: string): GroupConfig | null {
+  async getGroup(groupId: string): Promise<GroupConfig | null> {
+    await this.loadConfig();
     return this.config.groups[groupId] || null;
   }
 
-  toggleEnabledGroup(groupId: string): boolean {
+  async toggleEnabledGroup(groupId: string): Promise<boolean> {
+    await this.loadConfig();
     if (this.config.groups[groupId]) {
       this.config.groups[groupId].enabled = !this.config.groups[groupId].enabled;
-      this.saveConfig();
+      await this.saveConfig();
       return true;
     }
     return false;
   }
 
   // Alias for toggleEnabledGroup for backward compatibility
-  toggleGroup(groupId: string): boolean {
+  async toggleGroup(groupId: string): Promise<boolean> {
     return this.toggleEnabledGroup(groupId);
   }
 
   // Initialize with default admin and current group from .env
-  initialize(defaultAdminId?: string, defaultGroupId?: string, defaultGroupName?: string): void {
+  async initialize(defaultAdminId?: string, defaultGroupId?: string, defaultGroupName?: string): Promise<void> {
     // Add default admin if provided and not already added
-    if (defaultAdminId && !this.isAdmin(defaultAdminId)) {
-      this.addAdmin(defaultAdminId);
+    if (defaultAdminId && !(await this.isAdmin(defaultAdminId))) {
+      await this.addAdmin(defaultAdminId);
     }
 
     // Add default group if provided and not already added
-    if (defaultGroupId && defaultGroupName && !this.getGroup(defaultGroupId)) {
-      this.addGroup(defaultGroupId, defaultGroupName, defaultAdminId || 'system');
+    if (defaultGroupId && defaultGroupName && !(await this.getGroup(defaultGroupId))) {
+      await this.addGroup(defaultGroupId, defaultGroupName, defaultAdminId || 'system');
     }
+  }
+
+  // Synchronous methods for backward compatibility (these will load from cache)
+  isAdminSync(userId: string): boolean {
+    return this.config.admins.includes(userId);
+  }
+
+  isGroupEnabledSync(groupId: string): boolean {
+    const group = this.config.groups[groupId];
+    return group ? group.enabled : false;
+  }
+
+  getGroupSync(groupId: string): GroupConfig | null {
+    return this.config.groups[groupId] || null;
+  }
+
+  getAdminsSync(): string[] {
+    return [...this.config.admins];
+  }
+
+  getGroupsSync(): GroupConfig[] {
+    return Object.values(this.config.groups);
+  }
+
+  getEnabledGroupsSync(): GroupConfig[] {
+    return Object.values(this.config.groups).filter(group => group.enabled);
   }
 }
 
