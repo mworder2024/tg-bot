@@ -170,7 +170,13 @@ bot.command('create', async (ctx) => {
     selectionMultiplier: config.selectionMultiplier,
     startMinutes: config.startMinutes,
     chatId: parseInt(chatId),
-    scheduledStartTime: null as Date | null
+    scheduledStartTime: null as Date | null,
+    requiresApproval: config.requiresApproval,
+    isApproved: false,
+    raidEnabled: config.raidEnabled,
+    raidPaused: false,
+    raidStartTime: null as Date | null,
+    raidMessageCount: 0
   };
   
   // Schedule game with absolute time
@@ -196,17 +202,35 @@ bot.command('create', async (ctx) => {
     minute: '2-digit' 
   });
     
-  const announceMessage = 
+  let announceMessage = 
     `🎰 **Survival Lottery Created!**\n\n` +
     `🎲 Game ID: \`${newGame.gameId}\`\n` +
     `👤 Created by: ${username}\n` +
-    `👥 Players: 1/${newGame.maxPlayers}\n` +
-    `⏰ **Starts at ${startTimeStr}** (in ${config.startMinutes} minutes)\n\n` +
-    `📊 Settings:\n` +
+    `👥 Players: 1/${newGame.maxPlayers}\n`;
+  
+  if (config.requiresApproval) {
+    announceMessage += `⏸️ **AWAITING ADMIN APPROVAL**\n`;
+    announceMessage += `⏰ Will start ${config.startMinutes} minutes after approval\n\n`;
+  } else {
+    announceMessage += `⏰ **Starts at ${startTimeStr}** (in ${config.startMinutes} minutes)\n\n`;
+  }
+  
+  announceMessage += `📊 Settings:\n` +
     `• Max Players: ${config.maxPlayers}\n` +
     `• Survivors: ${survivorText}\n` +
-    `• Number Range: ${config.selectionMultiplier}x players\n\n` +
-    `💬 Use /join to participate!`;
+    `• Number Range: ${config.selectionMultiplier}x players\n`;
+  
+  if (config.raidEnabled) {
+    announceMessage += `• 🚨 **RAID MODE ENABLED**\n`;
+  }
+  
+  announceMessage += `\n`;
+  
+  if (config.requiresApproval) {
+    announceMessage += `⚠️ **Admin must use /approve to start the game**`;
+  } else {
+    announceMessage += `💬 Use /join to participate!`;
+  }
   
   const joinKeyboard = {
     inline_keyboard: [
@@ -1786,7 +1810,9 @@ function parseGameConfig(text: string) {
     startMinutes: gameDefaults.defaultStartMinutes,
     survivors: 1,
     selectionMultiplier: gameDefaults.defaultNumberMultiplier,
-    survivorsOverride: false
+    survivorsOverride: false,
+    requiresApproval: false,
+    raidEnabled: false
   };
 
   const maxMatch = text.match(/(?:--?|—)max\s+(\d+)/i);
@@ -1803,6 +1829,16 @@ function parseGameConfig(text: string) {
   if (survivorsMatch) {
     config.survivors = Math.max(parseInt(survivorsMatch[1]), 1);
     config.survivorsOverride = true;
+  }
+
+  // Check for approval flag
+  if (text.match(/(?:--?|—)approval/i)) {
+    config.requiresApproval = true;
+  }
+
+  // Check for raid flag
+  if (text.match(/(?:--?|—)raid/i)) {
+    config.raidEnabled = true;
   }
 
   // Auto-calculate survivors
