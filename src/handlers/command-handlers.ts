@@ -20,6 +20,8 @@ export async function handleLeaderboardCommand(ctx: Context): Promise<void> {
     let leaderboardMessage = `🏆 **SURVIVAL LOTTERY LEADERBOARD** 🏆\n\n`;
     leaderboardMessage += `📊 Total Games Played: ${totalGames}\n\n`;
     leaderboardMessage += '```\n';
+    leaderboardMessage += 'Rank Player              Wins Games  Rate\n';
+    leaderboardMessage += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
     
     for (let i = 0; i < topPlayers.length; i++) {
       const player = topPlayers[i];
@@ -30,15 +32,16 @@ export async function handleLeaderboardCommand(ctx: Context): Promise<void> {
       if (rank === 1) medal = '🥇';
       else if (rank === 2) medal = '🥈';
       else if (rank === 3) medal = '🥉';
-      else medal = `${rank}.`;
+      else medal = `${rank}.`.padStart(3, ' ');
       
       const rankStr = medal.padEnd(4, ' ');
-      const username = player.username.padEnd(18, ' ');
-      const wins = player.gamesWon.toString().padStart(2, ' ');
-      const games = player.gamesEntered.toString().padStart(3, ' ');
-      const rate = winRate.padStart(5, ' ');
+      const username = player.username.length > 16 ? player.username.substring(0, 16) : player.username;
+      const usernameStr = username.padEnd(18, ' ');
+      const wins = player.gamesWon.toString().padStart(4, ' ');
+      const games = player.gamesEntered.toString().padStart(5, ' ');
+      const rate = `${winRate}%`.padStart(6, ' ');
       
-      leaderboardMessage += `${rankStr}${username} 🏅 ${wins} wins | 🎮 ${games} games | 📈 ${rate}%\n`;
+      leaderboardMessage += `${rankStr}${usernameStr} ${wins} ${games} ${rate}\n`;
     }
     
     leaderboardMessage += '```';
@@ -147,24 +150,43 @@ export async function handlePrizeStatsCommand(ctx: Context): Promise<void> {
  */
 export async function handleWinnerStatsCommand(ctx: Context): Promise<void> {
   try {
-    const userWinnings = await prizeManager.getUserWinningsAsync();
-    const topWinners = userWinnings.slice(0, 20);
+    // Get top players from leaderboard (players with wins)
+    const allPlayers = await leaderboard.getLeaderboardAsync(100);
+    const topWinners = allPlayers.filter(player => player.gamesWon > 0).slice(0, 20);
     
     let winnersMessage = '🏆 **TOP WINNERS** 🏆\n\n';
     
     if (topWinners.length === 0) {
-      winnersMessage += 'No winners yet!';
+      winnersMessage += 'No winners yet!\n\nUse /create to start a lottery!';
     } else {
+      winnersMessage += '```\n';
+      winnersMessage += 'Rank Player              Wins Games  Rate\n';
+      winnersMessage += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
+      
       topWinners.forEach((winner, index) => {
-        const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${(index + 1).toString().padEnd(2, ' ')}.`;
-        const username = winner.username || 'Unknown';
-        const paddedUsername = username.padEnd(18, ' ');
-        const tokens = winner.totalWinnings.toLocaleString().padStart(9, ' ');
-        const wins = winner.gamesWon;
-        const winText = wins === 1 ? 'win' : 'wins';
-        winnersMessage += `${medal}  ${paddedUsername} 💰 ${tokens} tokens (🏆 ${wins} ${winText})\n`;
+        const rank = index + 1;
+        const winRate = (winner.gamesWon / winner.gamesEntered * 100).toFixed(1);
+        
+        let medal = '';
+        if (rank === 1) medal = '🥇';
+        else if (rank === 2) medal = '🥈'; 
+        else if (rank === 3) medal = '🥉';
+        else medal = `${rank}.`.padStart(3, ' ');
+        
+        const rankStr = medal.padEnd(4, ' ');
+        const username = winner.username.length > 16 ? winner.username.substring(0, 16) : winner.username;
+        const usernameStr = username.padEnd(18, ' ');
+        const wins = winner.gamesWon.toString().padStart(4, ' ');
+        const games = winner.gamesEntered.toString().padStart(5, ' ');
+        const rate = `${winRate}%`.padStart(6, ' ');
+        
+        winnersMessage += `${rankStr}${usernameStr} ${wins} ${games} ${rate}\n`;
       });
+      
+      winnersMessage += '```';
     }
+    
+    winnersMessage += '\n🎮 Only showing players with wins!';
     
     await ctx.reply(winnersMessage, { parse_mode: 'Markdown' });
   } catch (error) {
