@@ -1973,44 +1973,7 @@ bot.command('leaderboard', async (ctx): Promise<any> => {
 
 // Command: /stats
 bot.command('stats', async (ctx): Promise<any> => {
-  try {
-    const userId = ctx.from!.id.toString();
-    const playerStats = leaderboard.getPlayerStats(userId);
-    
-    if (!playerStats) {
-      return ctx.reply(
-        `📊 No statistics found!\n\n` +
-        `You haven't played any games yet.\n` +
-        `Use /create or /join to start playing!`
-      );
-    }
-    
-    const winRate = playerStats.gamesEntered > 0 ? (playerStats.gamesWon / playerStats.gamesEntered * 100).toFixed(1) : '0.0';
-    const lastPlayed = playerStats.lastPlayed.toLocaleDateString();
-    
-    let statsMessage = `📊 **PERSONAL STATISTICS** 📊\n\n`;
-    statsMessage += `\`\`\`\n`;
-    statsMessage += `Player:        ${playerStats.username}\n`;
-    statsMessage += `Total Wins:    ${playerStats.gamesWon}\n`;
-    statsMessage += `Games Played:  ${playerStats.gamesEntered}\n`;
-    statsMessage += `Win Rate:      ${winRate}%\n`;
-    statsMessage += `Last Played:   ${lastPlayed}\n`;
-    statsMessage += `\`\`\`\n`;
-    
-    // Show ranking
-    const allPlayers = leaderboard.getLeaderboard(1000);
-    const playerRank = allPlayers.findIndex(p => p.userId === userId) + 1;
-    const totalPlayers = allPlayers.length;
-    
-    if (playerRank > 0) {
-      statsMessage += `\n🏆 **Rank:** #${playerRank} of ${totalPlayers} players`;
-    }
-    
-    await ctx.reply(statsMessage, { parse_mode: 'Markdown' });
-  } catch (error) {
-    logger.error('Error in stats command:', error);
-    await ctx.reply('❌ Error loading your statistics. Please try again.');
-  }
+  await handleStatsCommand(ctx);
 });
 
 // Command: /prizestats
