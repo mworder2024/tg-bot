@@ -2425,6 +2425,40 @@ bot.command('start', (ctx) => {
   );
 });
 
+// Monitor all messages for raid bot completion
+bot.on('message', async (ctx) => {
+  try {
+    const message = ctx.message;
+    
+    // Check if this is from the raid bot and if any games are waiting for raid completion
+    if (message && 'text' in message && message.from?.id === 7747869380) { // @memeworldraidbot
+      const chatId = ctx.chat.id.toString();
+      const currentGame = getCurrentGame(chatId);
+      
+      if (currentGame && currentGame.raidPaused && currentGame.raidMonitorActive) {
+        const messageText = message.text;
+        
+        // Check for success message
+        if (messageText.includes('🎊 Raid Ended - Targets Reached!') || 
+            messageText.includes('🟩 Likes') || 
+            messageText.includes('🔥 Trending')) {
+          logger.info('Raid success detected from raid bot');
+          await handleRaidSuccess(chatId, currentGame);
+        }
+        // Check for failure message
+        else if (messageText.includes('⚠️ Raid Ended - Time limit reached!') || 
+                 messageText.includes('🟥 Likes')) {
+          logger.info('Raid failure detected from raid bot');
+          const isFirstFailure = !currentGame.raidFailureCount || currentGame.raidFailureCount === 0;
+          await handleRaidFailure(chatId, currentGame, isFirstFailure);
+        }
+      }
+    }
+  } catch (error) {
+    logger.error('Error in message handler:', error);
+  }
+});
+
 // Error handler
 bot.catch((err: any, ctx) => {
   logger.error(`Error for ${ctx.updateType}:`, err);
