@@ -5,15 +5,13 @@ let redisClient: RedisClientType | null = null;
 export async function initializeRedis(): Promise<void> {
   if (redisClient) return;
   
-  // Skip Redis initialization if no REDIS_URL is provided
-  if (!process.env.REDIS_URL) {
-    console.log('⚠️  Redis not configured, using memory storage only');
-    return;
-  }
+  // Default to local Redis if no REDIS_URL is provided
+  const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+  console.log(`🔄 Connecting to Redis at ${redisUrl}...`);
   
   try {
     redisClient = createClient({
-      url: process.env.REDIS_URL,
+      url: redisUrl,
       socket: {
         connectTimeout: 5000,
         reconnectStrategy: (retries) => {
