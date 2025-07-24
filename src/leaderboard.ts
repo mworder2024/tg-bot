@@ -49,25 +49,27 @@ class LeaderboardManager {
       const redisClient = getRedisClient();
       if (!redisClient) return;
 
-      // Check if Redis already has stats data
-      const existingStats = await redisClient.get('leaderboard:stats');
-      if (existingStats) return; // Already migrated
-
-      // Load file data and save to Redis
+      // Force fresh migration - load file data and save to Redis
       const stats = this.loadPlayerStats();
       if (stats.size > 0) {
         await this.savePlayerStats(stats);
-        console.log(`Migrated ${stats.size} player stats to Redis`);
+        console.log(`✅ Migrated ${stats.size} player stats to Redis`);
+      } else {
+        console.log('⚠️ No player stats found in file');
       }
 
-      // Migrate game history if needed
+      // Migrate game history
       const games = this.loadGameHistory();
       if (games.length > 0) {
         await redisClient.set('leaderboard:game_count', games.length.toString());
-        console.log(`Migrated ${games.length} game records to Redis`);
+        console.log(`✅ Migrated ${games.length} game records to Redis`);
+      } else {
+        console.log('⚠️ No game history found in file');
       }
     } catch (error) {
-      console.error('Error migrating data to Redis:', error);
+      console.error('❌ Error migrating data to Redis:', error);
+      // If Redis fails, make sure file loading still works
+      console.log('📁 Will fall back to file-based data loading');
     }
   }
 
@@ -89,17 +91,22 @@ class LeaderboardManager {
               });
             }
             
+            console.log(`📊 Loaded ${statsMap.size} player stats from Redis`);
             return statsMap;
+          } else {
+            console.log('⚠️ No stats data found in Redis, trying file...');
           }
         } catch (redisError) {
-          console.error('Redis error, falling back to file:', redisError);
+          console.error('❌ Redis error, falling back to file:', redisError);
         }
       }
 
       // Fall back to file
-      return this.loadPlayerStats();
+      const fileStats = this.loadPlayerStats();
+      console.log(`📁 Loaded ${fileStats.size} player stats from file`);
+      return fileStats;
     } catch (error) {
-      console.error('Error loading player stats async:', error);
+      console.error('❌ Error loading player stats async:', error);
       return new Map<string, PlayerStats>();
     }
   }
