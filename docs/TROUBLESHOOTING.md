@@ -1,10 +1,92 @@
-# 🔧 Telegram Bot Troubleshooting Guide
+# Troubleshooting Guide
+
+## Table of Contents
+- [Rate Limiting Issues](#rate-limiting-issues)
+- [Network Connection Issues](#network-connection-issues)
+- [Bot Not Responding](#bot-not-responding)
+- [Game Issues](#game-issues)
+- [Deployment Problems](#deployment-problems)
+- [Performance Issues](#performance-issues)
+
+## Rate Limiting Issues
+
+### Problem: Bot Gets Rate Limited by Telegram
+
+The bot can experience cascading rate limit failures when:
+1. Sending many messages during game (joins, countdowns, draws)
+2. Telegram returns 429 (Too Many Requests) errors
+3. Bot retries immediately, triggering more rate limits
+4. Scheduled timers continue firing, creating a perpetual loop
+
+### Solution: Built-in Rate Limit Protection
+
+The bot includes comprehensive rate limiting protection:
+
+#### Safe Telegram API (`src/utils/safe-telegram-api.ts`)
+- **Global rate limit detection** - Pauses all sending after 3 consecutive errors
+- **Per-chat rate limit tracking** - Individual chat management
+- **No immediate retries** - Messages are queued instead
+- **Minimum delays** - 100ms normal, 5s for critical messages
+- **Automatic cleanup** - Blocked chats are handled gracefully
+- **Game-aware** - Tracks active games to prevent orphaned timers
+
+#### Safe Notification Manager (`src/utils/safe-notification-manager.ts`)
+- **Join announcement buffering** - 10-second windows
+- **Duplicate prevention** - No repeat countdown messages
+- **Priority-based sending** - Critical messages first
+- **Skip non-critical** - When rate limited
+- **Clean game finish** - Proper cleanup
+
+#### Message Queue Manager Features
+- **Exponential backoff**: 1s → 2s → 4s → ... → 5 minutes max
+- **Circuit breaker**: Stops sending when too many errors
+- **Message deduplication**: Prevents duplicate messages
+- **Burst protection**: Limits messages per minute
+
+### Configuration
+
+Adjust rate limiting in environment variables:
+
+```env
+# Message delays (milliseconds)
+MESSAGE_DELAY_MS=300          # Minimum delay between messages
+RATE_LIMIT_WINDOW_MS=60000    # Rate limit window (1 minute)
+MAX_MESSAGES_PER_MINUTE=20    # Maximum messages per minute
+
+# Retry configuration
+MAX_RETRY_ATTEMPTS=3          # Maximum retry attempts
+INITIAL_RETRY_DELAY_MS=1000   # Initial retry delay
+MAX_RETRY_DELAY_MS=300000     # Maximum retry delay (5 minutes)
+```
+
+### Manual Recovery
+
+If bot is stuck in rate limit loop:
+
+1. **Restart the bot**
+   ```bash
+   # Railway
+   railway restart
+   
+   # Local
+   npm run restart
+   ```
+
+2. **Clear message queue**
+   - Bot automatically clears queue on restart
+   - Old scheduled messages are discarded
+
+3. **Reduce game speed**
+   - Use admin menu to slow down draws
+   - Increase delays between announcements
 
 ## Network Connection Issues
 
-If you're experiencing `ETIMEDOUT` errors when starting the bot, try these solutions:
+### ETIMEDOUT Errors
 
-### 1. Check Internet Connection
+If experiencing timeout errors when starting the bot:
+
+#### 1. Check Internet Connection
 ```bash
 # Test basic connectivity
 ping -c 3 google.com
@@ -15,186 +97,234 @@ ping -c 3 api.telegram.org
 curl -s "https://api.telegram.org/bot<YOUR_TOKEN>/getMe"
 ```
 
-### 2. Network Environment Issues
+#### 2. Network Restrictions
+Common causes:
+- University/corporate firewalls
+- Country-specific Telegram blocks
+- Port 443 (HTTPS) restrictions
 
-**If you're in a restricted network environment:**
-- University/corporate networks may block Telegram
-- Some countries have Telegram restrictions
-- Firewall may be blocking outbound HTTPS on port 443
+#### 3. Use Alternative Connection Methods
 
-### 3. Use Webhook Mode (Alternative)
-
-If polling doesn't work, try webhook mode:
-
+**Webhook Mode** (if polling fails):
 ```typescript
-// webhook-bot.ts
-import { Telegraf } from 'telegraf';
-import express from 'express';
-
-const bot = new Telegraf(process.env.BOT_TOKEN!);
-const app = express();
-
-app.use(bot.webhookCallback('/webhook'));
-
-bot.command('start', (ctx) => {
-  ctx.reply('🎲 Lottery Bot is running via webhook!');
-});
-
-// Set webhook
-const PORT = process.env.PORT || 3000;
-const WEBHOOK_URL = process.env.WEBHOOK_URL || `https://yourdomain.com/webhook`;
-
-bot.telegram.setWebhook(WEBHOOK_URL);
-app.listen(PORT, () => {
-  console.log(`Webhook server running on port ${PORT}`);
-});
+// Enable webhook in environment
+WEBHOOK_URL=https://your-domain.com/webhook
+PORT=3000
 ```
 
-### 4. Use ngrok for Local Testing
+**Proxy Support**:
+```env
+# HTTP proxy
+HTTP_PROXY=http://proxy-server:port
 
+# SOCKS proxy
+SOCKS_PROXY=socks5://proxy-server:port
+```
+
+#### 4. Increase Timeouts
+```env
+# Connection timeouts
+CONNECTION_TIMEOUT_MS=60000
+HANDLER_TIMEOUT_MS=90000
+```
+
+## Bot Not Responding
+
+### 1. Verify Bot Token
 ```bash
-# Install ngrok
-npm install -g ngrok
-
-# Start webhook server
-npm run webhook
-
-# In another terminal, expose it
-ngrok http 3000
-
-# Set webhook URL in bot
+# Test token validity
+curl "https://api.telegram.org/bot<YOUR_TOKEN>/getMe"
 ```
 
-### 5. Alternative: Use Bot via Proxy
+### 2. Check Bot Permissions
+- Bot must be group admin
+- Required permissions:
+  - Send messages
+  - Delete messages
+  - Pin messages (optional)
 
-```typescript
-import { Telegraf } from 'telegraf';
-import { HttpsProxyAgent } from 'https-proxy-agent';
-
-const proxyAgent = new HttpsProxyAgent('http://proxy:port');
-
-const bot = new Telegraf(process.env.BOT_TOKEN!, {
-  telegram: {
-    agent: proxyAgent
-  }
-});
-```
-
-### 6. Use Telegram Bot API Server (Self-hosted)
-
-For complete control, you can run your own Bot API server:
-
+### 3. Verify Environment Variables
 ```bash
-# Download official Bot API server
-# https://core.telegram.org/bots/api#using-a-local-bot-api-server
+# Railway
+railway variables
+
+# Local
+cat .env | grep BOT_TOKEN
 ```
 
-## Quick Fixes to Try
+### 4. Check Logs
+```bash
+# Railway logs
+railway logs --tail 100
 
-### Fix 1: Increase Timeouts
-```typescript
-const bot = new Telegraf(token, {
-  handlerTimeout: 120000, // 2 minutes
-  telegram: {
-    apiRoot: 'https://api.telegram.org',
-    agent: new https.Agent({
-      timeout: 60000,
-      keepAlive: true
-    })
-  }
-});
+# Local logs
+tail -f bot.log
 ```
 
-### Fix 2: Use Different API Endpoint
-```typescript
-// Try different Telegram data centers
-const bot = new Telegraf(token, {
-  telegram: {
-    apiRoot: 'https://api.telegram.org' // or try other DCs
-  }
-});
-```
+## Game Issues
 
-### Fix 3: Retry Logic with Exponential Backoff
-```typescript
-async function startBotWithRetry() {
-  for (let attempt = 1; attempt <= 5; attempt++) {
-    try {
-      await bot.launch();
-      console.log('✅ Bot started successfully!');
-      return;
-    } catch (error) {
-      const delay = Math.pow(2, attempt) * 1000; // Exponential backoff
-      console.log(`Attempt ${attempt} failed, retrying in ${delay}ms...`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-  }
-  throw new Error('Failed to start bot after 5 attempts');
+### Game Won't Start
+1. Check if another game is active
+2. Verify bot has admin permissions
+3. Check minimum player requirements
+4. Review scheduled game conflicts
+
+### Players Can't Join
+1. Ensure game is in WAITING state
+2. Check if player already joined
+3. Verify group permissions
+4. Check rate limiting status
+
+### Number Selection Not Working
+1. Verify bot can send DMs
+2. Check player privacy settings
+3. Ensure selection phase is active
+4. Review callback query handling
+
+### Draw Phase Stuck
+1. Check for rate limiting
+2. Verify VRF is working
+3. Review timer management
+4. Check for JavaScript errors
+
+## Deployment Problems
+
+### Railway Deployment Fails
+
+#### Build Errors
+```bash
+# Check build logs
+railway logs --build
+
+# Common fixes:
+# 1. Clear cache
+railway cache clear
+
+# 2. Update dependencies
+npm update
+npm audit fix
+
+# 3. Check Node version
+# Ensure package.json specifies:
+"engines": {
+  "node": ">=18.0.0"
 }
 ```
 
-## Alternative Testing Methods
+#### Environment Variable Issues
+- Variable names are case-sensitive
+- No quotes around values in Railway
+- Use Raw Editor for complex values
 
-### Test Bot Without Telegraf
+#### Resource Limits
+- Free tier: 500 hours/month
+- Memory limit: 512MB (free tier)
+- Check usage in dashboard
 
-```javascript
-// simple-test.js
-const https = require('https');
+### Local Development Issues
 
-function sendMessage(chatId, text) {
-  const postData = JSON.stringify({
-    chat_id: chatId,
-    text: text
-  });
+#### Port Already in Use
+```bash
+# Find process using port
+lsof -i :3000
 
-  const options = {
-    hostname: 'api.telegram.org',
-    port: 443,
-    path: `/bot${process.env.BOT_TOKEN}/sendMessage`,
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(postData)
-    }
-  };
-
-  const req = https.request(options, (res) => {
-    console.log(`Status: ${res.statusCode}`);
-    res.on('data', (d) => {
-      console.log(d.toString());
-    });
-  });
-
-  req.on('error', (e) => {
-    console.error(e);
-  });
-
-  req.write(postData);
-  req.end();
-}
-
-// Test with your chat ID
-sendMessage('YOUR_CHAT_ID', 'Test message from raw HTTPS');
+# Kill process
+kill -9 <PID>
 ```
 
-## Getting Your Chat ID
+#### Module Not Found
+```bash
+# Clear node_modules
+rm -rf node_modules package-lock.json
+npm install
 
-1. Message your bot on Telegram
-2. Visit: `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates`
-3. Look for your chat ID in the response
+# Clear TypeScript cache
+rm -rf dist
+npm run build
+```
 
-## If All Else Fails
+## Performance Issues
 
-1. **Deploy to a VPS/Cloud:** Services like Heroku, Railway, or DigitalOcean
-2. **Use Telegram Bot hosting:** Services like BotFather hosting
-3. **Wait and retry:** Sometimes it's temporary network congestion
+### High Memory Usage
+1. Enable Redis for caching
+2. Reduce message history retention
+3. Implement periodic cleanup
+4. Monitor with `railway logs --metrics`
 
-## Contact Support
+### Slow Response Times
+1. Enable message queue optimization
+2. Reduce animation delays
+3. Use webhook instead of polling
+4. Enable connection pooling
 
-If none of these solutions work, the issue might be:
-- Regional network restrictions
-- ISP blocking Telegram
-- Temporary Telegram API issues
-- Local firewall configuration
+### Database Performance
+1. Add indexes for frequent queries
+2. Enable connection pooling
+3. Use Redis for session storage
+4. Implement query caching
 
-Try deploying to a cloud service for immediate testing.
+## Common Error Messages
+
+### "Forbidden: bot was blocked by the user"
+- User blocked the bot
+- Skip sending DMs to this user
+- Clean up user data periodically
+
+### "Bad Request: message to delete not found"
+- Message already deleted
+- Implement safe delete with try-catch
+- Ignore 400 errors for deletes
+
+### "Conflict: terminated by other getUpdates request"
+- Multiple bot instances running
+- Check for duplicate processes
+- Use webhook mode to prevent
+
+### "Too Many Requests: retry after X"
+- Hit Telegram rate limit
+- Bot will auto-retry with backoff
+- Reduce message frequency
+
+## Quick Fixes
+
+### Reset Bot State
+```bash
+# Clear all game data
+rm -rf data/games.json
+rm -rf data/leaderboard.json
+
+# Restart bot
+npm run restart
+```
+
+### Emergency Stop
+```bash
+# Stop all games immediately
+echo '{}' > data/games.json
+railway restart
+```
+
+### Clear Redis Cache
+```bash
+# If using Redis
+redis-cli FLUSHALL
+```
+
+## Getting Help
+
+### Logs Location
+- Railway: Dashboard → Logs tab
+- Local: `bot.log` file
+- System: `journalctl -u lottery-bot`
+
+### Debug Mode
+```env
+# Enable debug logging
+LOG_LEVEL=debug
+DEBUG=telegraf:*
+```
+
+### Support Channels
+- GitHub Issues: Report bugs
+- Railway Dashboard: Deployment help
+- Telegram @BotSupport: API issues

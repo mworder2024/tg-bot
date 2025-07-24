@@ -1,229 +1,279 @@
 # Deployment Guide
 
-This guide covers deployment options for the Telegram Lottery Bot v3.4.
+This guide covers deployment of the Telegram Lottery Bot v3.4 to Railway.
 
 ## Table of Contents
+- [Prerequisites](#prerequisites)
 - [Railway Deployment](#railway-deployment)
-- [Local Development](#local-development)
 - [Environment Variables](#environment-variables)
+- [Post-Deployment Setup](#post-deployment-setup)
+- [Local Development](#local-development)
+- [Monitoring & Logs](#monitoring--logs)
 - [Troubleshooting](#troubleshooting)
+
+## Prerequisites
+
+### Required
+- [Railway Account](https://railway.app) (free tier available)
+- [Telegram Bot Token](https://t.me/botfather) from BotFather
+- Node.js 18+ (for local development)
+
+### Optional
+- Railway CLI: `npm install -g @railway/cli`
+- Redis instance (for persistence)
+- PostgreSQL database (for advanced features)
 
 ## Railway Deployment
 
-### Prerequisites
-- Railway CLI: `npm install -g @railway/cli`
-- Railway account: https://railway.app
+### Method 1: Deploy from GitHub (Recommended)
 
-### Quick Start
+1. **Fork or push your code to GitHub**
 
-1. **Login and Initialize**
+2. **Create new Railway project**
+   - Go to [Railway Dashboard](https://railway.app/dashboard)
+   - Click "New Project"
+   - Select "Deploy from GitHub repo"
+   - Choose your repository
+
+3. **Configure environment variables** (see [Environment Variables](#environment-variables))
+
+4. **Deploy**
+   - Railway automatically deploys on push to main branch
+
+### Method 2: Deploy via CLI
+
+1. **Install Railway CLI**
+   ```bash
+   npm install -g @railway/cli
+   ```
+
+2. **Login and initialize**
    ```bash
    railway login
-   railway init
+   railway link  # Select existing project or create new
    ```
 
-2. **Set Required Variables**
+3. **Set environment variables**
    ```bash
    railway variables set BOT_TOKEN=your-telegram-bot-token
-   railway variables set VRF_SECRET=0e4ba098221f48116c68d5c77fc8acc7b90d31a69b1636931b8f3183ee36d2fb
+   railway variables set VRF_SECRET=your-vrf-secret
    ```
 
-3. **Deploy**
+4. **Deploy**
    ```bash
    railway up
    ```
 
-### Database & Redis (Optional)
+### Method 3: Direct Deploy Button
 
-The bot works without a database, but you can add persistence:
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/lottery-bot)
 
-1. **Add PostgreSQL**: New Service → Database → PostgreSQL
-2. **Add Redis**: New Service → Database → Redis
+Click the button and follow the prompts to deploy directly.
 
-Railway automatically sets `DATABASE_URL` and `REDIS_URL`.
+## Environment Variables
 
-### Post-Deployment
+### Required Variables
 
-#### Set Telegram Webhook (if using webhook mode)
-```bash
-curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://<your-railway-app>.railway.app/webhook"}'
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `BOT_TOKEN` | Telegram Bot API token | `123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11` |
+| `VRF_SECRET` | Secret for random number generation | Any 64-character hex string |
+
+### Optional Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `NODE_ENV` | Environment mode | `production` |
+| `PORT` | Server port (for webhook mode) | `3000` |
+| `WEBHOOK_URL` | Public URL for webhook mode | - |
+| `REDIS_URL` | Redis connection URL | - |
+| `DATABASE_URL` | PostgreSQL connection URL | - |
+| `LOG_LEVEL` | Logging verbosity | `info` |
+| `ADMIN_IDS` | Comma-separated admin user IDs | - |
+| `DEFAULT_CHAT_ID` | Default group chat ID | - |
+| `ENABLE_PERSISTENCE` | Enable game state persistence | `true` |
+
+### Setting Variables in Railway
+
+1. Go to your project dashboard
+2. Click on your service
+3. Navigate to "Variables" tab
+4. Add each variable:
+   - Click "New Variable"
+   - Enter name and value
+   - Click "Add"
+
+Or use Raw Editor to paste all at once:
+```env
+BOT_TOKEN=your-telegram-bot-token
+VRF_SECRET=0e4ba098221f48116c68d5c77fc8acc7b90d31a69b1636931b8f3183ee36d2fb
+NODE_ENV=production
+LOG_LEVEL=info
 ```
 
-### Monitoring
+## Post-Deployment Setup
+
+### 1. Webhook Configuration (Optional)
+
+For better performance, configure webhook mode:
 
 ```bash
-railway logs -f          # Follow logs
-railway status          # Check deployment
-railway open           # Open dashboard
-railway variables      # List environment variables
+# Get your Railway app URL
+WEBHOOK_URL=$(railway status --json | jq -r .url)
+
+# Set webhook
+curl -X POST "https://api.telegram.org/bot$BOT_TOKEN/setWebhook" \
+  -H "Content-Type: application/json" \
+  -d "{\"url\": \"$WEBHOOK_URL/webhook\"}"
+```
+
+### 2. Add Bot to Groups
+
+1. Add bot to your Telegram groups
+2. Make bot an administrator (required for managing games)
+3. Use `/start` to initialize the bot in each group
+
+### 3. Configure Admins
+
+Set admin user IDs in environment variables:
+```bash
+railway variables set ADMIN_IDS=123456789,987654321
 ```
 
 ## Local Development
 
 ### Setup
+
+1. **Clone repository**
+   ```bash
+   git clone <your-repo-url>
+   cd telegram-lottery-bot
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Create `.env` file**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your values
+   ```
+
+4. **Run locally**
+   ```bash
+   npm run dev
+   ```
+
+### Testing with ngrok
+
+For webhook testing locally:
 ```bash
-npm install
-cp .env.example .env
-# Edit .env with your configuration
+# Install ngrok
+npm install -g ngrok
+
+# Start ngrok
+ngrok http 3000
+
+# Use ngrok URL as WEBHOOK_URL
 ```
 
-### Running
+## Monitoring & Logs
+
+### Railway Logs
+
+View logs in Railway dashboard:
+1. Go to your project
+2. Click on the service
+3. Navigate to "Logs" tab
+
+Or via CLI:
 ```bash
-# Development with hot reload
-npm run dev
-
-# Enhanced bot development
-./scripts/run-enhanced-dev.sh
-
-# Production build
-npm run build
-npm start
+railway logs --tail
 ```
 
-### Verification
-```bash
-# Verify bot configuration
-./scripts/verify-bot.sh
+### Health Checks
 
-# Test enhanced bot
-./scripts/test-enhanced-bot.sh
-```
+The bot includes built-in health monitoring:
+- Automatic restart on crashes
+- Memory usage tracking
+- Error logging with timestamps
 
-## Environment Variables
+### Metrics
 
-### Required
-- `BOT_TOKEN` - Telegram bot token (required)
-- `VRF_SECRET` - For randomness generation (default provided)
-
-### Optional - Core
-- `DEFAULT_ADMIN_ID` - Your Telegram user ID
-- `SUPER_ADMIN_ID` - For highest privileges
-- `DEFAULT_CHAT_ID` - For scheduled games
-- `LOG_LEVEL` - debug, info, warn, error (default: info)
-- `ENVIRONMENT` - development or production
-
-### Optional - Services
-- `DATABASE_URL` - PostgreSQL connection string
-- `REDIS_URL` - Redis connection string
-- `ANTHROPIC_API_KEY` - For AI features
-- `SENTRY_DSN` - Error monitoring
-
-### Optional - Solana/Blockchain
-- `SOLANA_NETWORK` - devnet or mainnet-beta
-- `SOLANA_RPC_URL` - Your Solana RPC endpoint
-- `SOLANA_PROGRAM_ID` - Your deployed program ID
-- `BOT_WALLET_KEY` - Bot's wallet private key
-
-### Finding Your Telegram User ID
-Message @userinfobot on Telegram to get your user ID.
-
-### What Works Without Database/Redis
-✅ Basic lottery games
-✅ Player management
-✅ Drawing system
-✅ Winner selection
-✅ Admin commands
-✅ Game scheduling
-
-### What Requires Database/Redis
-❌ Persistent stats/leaderboard
-❌ Long-term game history
-❌ Cross-session data
+Monitor key metrics:
+- Active games count
+- Message queue size
+- Response times
+- Error rates
 
 ## Troubleshooting
 
 ### Bot Not Responding
-1. Check logs: `railway logs` or local console
-2. Verify `BOT_TOKEN` is correct
-3. Ensure bot has proper Telegram permissions
-4. Check bot started successfully (look for "Bot started" in logs)
 
-### Missing Environment Variables
-```bash
-# Railway
-railway variables set BOT_TOKEN=your-token
-
-# Local
-echo "BOT_TOKEN=your-token" >> .env
-```
-
-### Database Connection Issues
-- Bot works without database for basic games
-- Verify `DATABASE_URL` is set if using PostgreSQL
-- Check PostgreSQL service is running
-- Review connection logs
-
-### Memory Issues (Railway)
-- Railway free tier: 512MB RAM
-- Disable unused features to save memory:
-  ```bash
-  railway variables set ENABLE_BLOCKCHAIN=false
-  railway variables set ENABLE_QUIZ_MODE=false
-  ```
-- Upgrade plan for more resources
-
-### Build Failures
-- Ensure all dependencies are in `package.json`
-- Test build locally first: `npm run build`
-- Check TypeScript errors: `npm run typecheck`
-
-### Emergency Fixes
-
-If bot keeps crashing on Railway:
-
-1. **Use minimal bot**:
+1. **Check logs for errors**
    ```bash
-   railway variables set START_MINIMAL=true
+   railway logs --tail 100
    ```
 
-2. **Disable all features**:
+2. **Verify environment variables**
    ```bash
-   railway variables set DISABLE_ALL_FEATURES=true
+   railway variables
    ```
 
-3. **Increase timeouts**:
+3. **Test bot token**
    ```bash
-   railway variables set BOT_TIMEOUT=120000
-   railway variables set HANDLER_TIMEOUT=90000
+   curl https://api.telegram.org/bot$BOT_TOKEN/getMe
    ```
 
-### Gradual Feature Enablement
+### Deployment Failures
 
-After basic bot is running:
+1. **Check build logs**
+   - Look for npm install errors
+   - Verify Node.js version compatibility
 
-1. **Add PostgreSQL**: Railway dashboard → New Service
-2. **Add Redis**: Railway dashboard → New Service
-3. **Enable features one by one**:
-   ```bash
-   railway variables set ENABLE_WEB_DASHBOARD=true
-   railway variables set ENABLE_BLOCKCHAIN=true
-   ```
+2. **Environment issues**
+   - Ensure all required variables are set
+   - Check for typos in variable names
 
-## Alternative Deployment Options
+3. **Resource limits**
+   - Free tier: 500 hours/month
+   - Check usage in Railway dashboard
 
-### Replit
-1. Go to https://replit.com
-2. Create new Repl → Import from GitHub
-3. Set environment variables in Secrets
-4. Click Run
+### Performance Issues
 
-### Glitch
-1. Go to https://glitch.com
-2. New Project → Import from GitHub
-3. Add `.env` file with your bot token
-4. Project automatically deploys
+1. **Enable Redis** for better performance:
+   - Add Redis service in Railway
+   - It auto-configures `REDIS_URL`
 
-### Heroku (Paid)
-```bash
-heroku create your-bot-name
-git push heroku main
-```
+2. **Optimize message sending**:
+   - Bot includes rate limiting protection
+   - Adjust `MESSAGE_DELAY_MS` if needed
+
+3. **Scale horizontally**:
+   - Railway supports multiple instances
+   - Enable via dashboard scaling options
+
+### Common Issues
+
+**"Webhook not working"**
+- Ensure `WEBHOOK_URL` is publicly accessible
+- Check SSL certificate validity
+- Verify webhook is set correctly
+
+**"Bot kicked from group"**
+- Ensure bot has admin privileges
+- Check for Telegram API rate limits
+- Review group permissions
+
+**"Games not persisting"**
+- Add Redis or PostgreSQL service
+- Check `ENABLE_PERSISTENCE` is `true`
+- Verify database connections
 
 ## Support
 
-- Railway Discord: https://discord.gg/railway
-- Railway Support: support@railway.app
-- Project Issues: Check GitHub repository
-- Logs: Always check logs first for error details
+- [Railway Documentation](https://docs.railway.app)
+- [Telegram Bot API](https://core.telegram.org/bots/api)
+- Project Issues: [GitHub Issues](https://github.com/your-repo/issues)

@@ -1,28 +1,65 @@
-# Telegram Lottery Bot Documentation
+# Documentation Index
 
-## Essential Documentation
+Welcome to the Telegram Lottery Bot v3.4 documentation.
 
-### 🚀 Getting Started
-- [Main Project README](../README.md) - Overview and quick start
-- [Deployment Guide](DEPLOYMENT.md) - How to deploy the bot
-- [Troubleshooting](TROUBLESHOOTING.md) - Common issues and solutions
+## Core Documentation
 
-### 🎮 Features & Usage
-- [Admin Menu Guide](ADMIN_MENU_GUIDE.md) - Admin commands and features
-- [Draw System](DRAW_SYSTEM.md) - How the lottery draw mechanics work
-- [Scheduled Games](SCHEDULED_GAME_ANNOUNCEMENTS.md) - Scheduled game features
+### Getting Started
+- **[Deployment Guide](DEPLOYMENT.md)** - Deploy the bot to Railway or run locally
+- **[Features Overview](FEATURES.md)** - Complete list of bot features and game mechanics
+- **[Architecture](ARCHITECTURE.md)** - System design and draw mechanics
 
-### 🔧 Technical Details
-- [Development Guide](DEVELOPMENT.md) - Local development setup
-- [Telegram Framework Analysis](TELEGRAM_BOT_FRAMEWORK_ANALYSIS.md) - Framework comparison
-- [Security Checklist](SECURITY_CHECKLIST.md) - Security best practices
+### Operation & Management
+- **[Admin Guide](ADMIN_GUIDE.md)** - Admin commands and bot configuration
+- **[Scheduled Games](SCHEDULED_GAME_ANNOUNCEMENTS.md)** - Automated game scheduling
+- **[Security](SECURITY.md)** - Security best practices and checklist
 
-### 📁 Archive
-- [Legacy Documentation](archive/legacy/) - Older system documentation
-- [Removed Features](archive/removed-features/) - Documentation for removed features (Quiz, Web UI, etc.)
+### Support
+- **[Troubleshooting](TROUBLESHOOTING.md)** - Common issues, solutions, and rate limiting
 
 ## Quick Links
 
-- **Bot Token Setup**: See [Deployment Guide](DEPLOYMENT.md#bot-token)
-- **Admin Commands**: See [Admin Menu Guide](ADMIN_MENU_GUIDE.md#commands)
-- **Game Configuration**: See [Draw System](DRAW_SYSTEM.md#configuration)
+### For Players
+- [How to Play](FEATURES.md#game-flow) - Game rules and mechanics
+- [Commands](FEATURES.md#user-commands) - Available player commands
+
+### For Administrators  
+- [Admin Menu](ADMIN_GUIDE.md#admin-menu-system) - Interactive configuration
+- [Scheduling Games](SCHEDULED_GAME_ANNOUNCEMENTS.md) - Automated games
+- [Rate Limit Prevention](TROUBLESHOOTING.md#rate-limiting-issues) - Avoid Telegram limits
+
+### For Developers
+- [System Architecture](ARCHITECTURE.md) - Technical implementation
+- [Deployment](DEPLOYMENT.md#local-development) - Development setup
+- [Security Considerations](SECURITY.md) - Best practices
+
+## Documentation Structure
+
+```
+docs/
+├── README.md                    # This file
+├── DEPLOYMENT.md                # Railway deployment guide
+├── FEATURES.md                  # Complete feature documentation
+├── ARCHITECTURE.md              # System design and mechanics
+├── ADMIN_GUIDE.md               # Admin commands and configuration
+├── SCHEDULED_GAME_ANNOUNCEMENTS.md  # Game scheduling
+├── SECURITY.md                  # Security checklist
+├── TROUBLESHOOTING.md           # Issues and solutions
+└── archive/                     # Historical documentation
+```
+
+## Key Features
+
+- 🎲 **Survival Lottery** - Last player standing wins
+- 📊 **Dynamic Ranges** - Number range scales with players
+- ⚡ **Rate Limit Protection** - Advanced message queuing
+- 🕐 **Game Scheduling** - Automated recurring games
+- 🛡️ **Admin Controls** - Full game management
+- 📈 **Statistics** - Player stats and leaderboards
+
+## Getting Help
+
+1. Check [Troubleshooting](TROUBLESHOOTING.md) for common issues
+2. Review [Features](FEATURES.md) for usage questions  
+3. See [Admin Guide](ADMIN_GUIDE.md) for configuration help
+4. Open a GitHub issue for bugs or feature requests
