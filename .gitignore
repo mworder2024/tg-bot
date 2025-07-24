@@ -33,7 +33,10 @@ Thumbs.db
 
 # Test files
 test-*.txt
+test-*.ts
 stress-test-results.log
+test-hook-trigger.txt
+test-protection.txt
 
 # Temporary files
 tmp/
@@ -56,6 +59,10 @@ memory/
 
 # Railway
 .railway/
+
+# Misc generated files
+estatement.svg
+package-simple.json
 
 # Claude Flow generated files
 .claude/settings.local.json

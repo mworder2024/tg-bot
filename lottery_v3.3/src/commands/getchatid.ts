@@ -1,1 +1,0 @@
-// Helper command to get chat ID for configuration
