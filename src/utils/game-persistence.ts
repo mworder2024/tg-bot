@@ -29,9 +29,15 @@ class GamePersistence {
       const redisPromises: Promise<void>[] = [];
       
       for (const [chatId, game] of gameStates.entries()) {
+        // Filter out non-serializable properties
+        const {
+          raidReminderInterval,
+          ...gameWithoutTimeouts
+        } = game;
+        
         // Convert Map objects to arrays for JSON serialization
         const serializedGame = {
-          ...game,
+          ...gameWithoutTimeouts,
           players: Array.from(game.players.entries()),
           numberSelections: Array.from(game.numberSelections.entries()).map(([key, setVal]: [any, any]) => [
             key,
@@ -92,9 +98,15 @@ class GamePersistence {
       const gamesObj: GameState = {};
       
       for (const [chatId, game] of gameStates.entries()) {
+        // Filter out non-serializable properties
+        const {
+          raidReminderInterval,
+          ...gameWithoutTimeouts
+        } = game;
+        
         // Convert Map objects to arrays for JSON serialization
         const serializedGame = {
-          ...game,
+          ...gameWithoutTimeouts,
           players: Array.from(game.players.entries()),
           numberSelections: Array.from(game.numberSelections.entries()).map(([key, setVal]: [any, any]) => [
             key,
