@@ -710,28 +710,37 @@ async function startDrawing(chatId: string) {
         playerListMessage += `👥 **${activePlayers.size} Players Remaining**\n`;
         playerListMessage += `💀 Total Eliminated: ${totalEliminated}\n`;
         playerListMessage += `🏆 Playing for: ${currentGame.winnerCount} survivor${currentGame.winnerCount > 1 ? 's' : ''}\n\n`;
-        // Contextual header based on game state
-        if (activePlayers.size - currentGame.winnerCount <= 3) {
-          playerListMessage += `**🔥 Final Survivors:**\n`;
-        } else if (activePlayers.size <= 10) {
-          playerListMessage += `**👥 Remaining Players:**\n`;
-        } else {
-          playerListMessage += `**🎯 Current Players:**\n`;
-        }
         
         // Sort players by number
         remainingPlayers.sort((a: any, b: any) => a.number - b.number);
         
-        for (const player of remainingPlayers) {
-          playerListMessage += `• ${escapeUsername(player.username)} (#${player.number})\n`;
-        }
-        
-        // Add suspense if close to the end
+        // For final phase, use suspenseful message format
         if (activePlayers.size - currentGame.winnerCount <= 3) {
-          playerListMessage += `\n${generateSuspensefulPlayerList(
-            remainingPlayers,
-            currentGame.winnerCount
-          ).split('\n').slice(4).join('\n')}`; // Skip the header from suspenseful message
+          // Use the suspenseful message but replace its header with our game update
+          const suspenseMessage = generateSuspensefulPlayerList(remainingPlayers, currentGame.winnerCount);
+          const suspenseLines = suspenseMessage.split('\n');
+          // Skip the first 3 lines (header and warning) and use the "Still Standing" part
+          const stillStandingIndex = suspenseLines.findIndex(line => line.includes('Still Standing'));
+          if (stillStandingIndex !== -1) {
+            playerListMessage += suspenseLines.slice(stillStandingIndex).join('\n');
+          } else {
+            // Fallback if format changes
+            playerListMessage += `**Still Standing:**\n`;
+            for (const player of remainingPlayers) {
+              playerListMessage += `• ${escapeUsername(player.username)} (#${player.number})\n`;
+            }
+          }
+        } else {
+          // Normal player list for non-final phases
+          if (activePlayers.size <= 10) {
+            playerListMessage += `**👥 Remaining Players:**\n`;
+          } else {
+            playerListMessage += `**🎯 Current Players:**\n`;
+          }
+          
+          for (const player of remainingPlayers) {
+            playerListMessage += `• ${escapeUsername(player.username)} (#${player.number})\n`;
+          }
         }
         
         messageQueue.enqueue({
@@ -2430,13 +2439,40 @@ bot.on('message', async (ctx) => {
   try {
     const message = ctx.message;
     
-    // Check if this is from the raid bot and if any games are waiting for raid completion
+    // Check if this is from the raid bot
     if (message && 'text' in message && message.from?.id === 7747869380) { // @memeworldraidbot
       const chatId = ctx.chat.id.toString();
       const currentGame = getCurrentGame(chatId);
+      const messageText = message.text;
       
+      // Check if there's an active game that can be paused for raids
+      if (currentGame && currentGame.state === 'DRAWING' && currentGame.raidEnabled) {
+        
+        // Detect RAID IN PROGRESS - pause the game if not already paused
+        if ((messageText.includes('⚔️ RAID IN PROGRESS ⚔️') || 
+             messageText.includes('🚨 Raid ongoing') ||
+             messageText.includes('RAID IN PROGRESS')) && !currentGame.raidPaused) {
+          logger.info('Active raid detected - pausing lottery');
+          
+          // Check if we're past halfway point
+          const totalPlayers = currentGame.players.size;
+          const activePlayers = new Set();
+          for (const [playerId, player] of currentGame.players) {
+            if (!player.eliminated) {
+              activePlayers.add(playerId);
+            }
+          }
+          const eliminated = totalPlayers - activePlayers.size;
+          const halfwayPoint = Math.floor(totalPlayers / 2);
+          
+          if (eliminated >= halfwayPoint && activePlayers.size > currentGame.winnerCount + 2) {
+            await pauseForRaid(chatId, currentGame);
+          }
+        }
+      }
+      
+      // Check for raid completion if game is paused and waiting
       if (currentGame && currentGame.raidPaused && currentGame.raidMonitorActive) {
-        const messageText = message.text;
         
         // Check for success message
         if (messageText.includes('🎊 Raid Ended - Targets Reached!') || 
