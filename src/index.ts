@@ -531,6 +531,19 @@ async function startDrawing(chatId: string) {
       return;
     }
     
+    // Check for raid pause
+    if (currentGame.raidEnabled && !currentGame.raidPaused) {
+      const totalPlayers = currentGame.players.size;
+      const eliminated = totalPlayers - activePlayers.size;
+      const halfwayPoint = Math.floor(totalPlayers / 2);
+      
+      if (eliminated >= halfwayPoint && activePlayers.size > currentGame.winnerCount + 2) {
+        // Pause for raid
+        await pauseForRaid(chatId, currentGame);
+        return;
+      }
+    }
+    
     // Get speed configuration from config manager
     const speedConfig = gameConfigManager.getSpeedConfig(
       activePlayers.size,
@@ -1926,6 +1939,138 @@ function parseGameConfig(text: string) {
   }
 
   return config;
+}
+
+// Raid-related functions
+async function pauseForRaid(chatId: string, game: any) {
+  game.raidPaused = true;
+  game.raidStartTime = new Date();
+  game.raidMessageCount = 0;
+  
+  // Initial raid announcement
+  await messageQueue.enqueue({
+    type: 'announcement',
+    chatId: chatId,
+    content: `🚨 **RAID TIME!** 🚨\n\n` +
+      `The lottery is PAUSED until everyone completes the raid!\n\n` +
+      `💪 GET IN THERE AND ENGAGE!\n` +
+      `❌ NO RAID = NO PRIZES!\n\n` +
+      `Waiting for @memeworldraidbot to confirm completion...`,
+    priority: 'critical'
+  });
+  
+  // Start monitoring for raid bot messages
+  startRaidMonitoring(chatId, game);
+  
+  // Start engagement reminder timer
+  startEngagementReminders(chatId, game);
+}
+
+function startRaidMonitoring(chatId: string, game: any) {
+  // Set up monitoring for raid bot messages
+  // This will be handled by message event listener
+  game.raidMonitorActive = true;
+}
+
+function startEngagementReminders(chatId: string, game: any) {
+  const reminders = [
+    `⚡ RAID STILL ACTIVE! Get in there or we cancel the whole thing!`,
+    `😤 Not seeing enough engagement! PUMP THOSE NUMBERS!`,
+    `🔥 Come on! We need EVERYONE in this raid or no prizes!`,
+    `👀 Still waiting... Some of you better not be slacking!`,
+    `💀 Engagement looking WEAK! Step it up or game over!`,
+    `🚨 FINAL WARNING: Engage NOW or lottery gets cancelled!`
+  ];
+  
+  const reminderInterval = setInterval(() => {
+    if (!game.raidPaused) {
+      clearInterval(reminderInterval);
+      return;
+    }
+    
+    const message = reminders[game.raidMessageCount % reminders.length];
+    game.raidMessageCount++;
+    
+    messageQueue.enqueue({
+      type: 'announcement',
+      chatId: chatId,
+      content: message,
+      priority: 'high'
+    });
+    
+    // After 10 messages, get more aggressive
+    if (game.raidMessageCount > 10) {
+      messageQueue.enqueue({
+        type: 'announcement',
+        chatId: chatId,
+        content: `❌❌❌ ${game.raidMessageCount * 5} SECONDS WASTED! GET IN THE RAID! ❌❌❌`,
+        priority: 'critical'
+      });
+    }
+  }, 30000); // Every 30 seconds
+  
+  // Store interval ID for cleanup
+  game.raidReminderInterval = reminderInterval;
+}
+
+async function handleRaidSuccess(chatId: string, game: any) {
+  game.raidPaused = false;
+  game.raidMonitorActive = false;
+  
+  // Clear reminder interval
+  if (game.raidReminderInterval) {
+    clearInterval(game.raidReminderInterval);
+  }
+  
+  await messageQueue.enqueue({
+    type: 'announcement',
+    chatId: chatId,
+    content: `✅ **RAID SUCCESSFUL!** ✅\n\n` +
+      `Great job everyone! 🔥\n\n` +
+      `The lottery will resume in 10 seconds...\n` +
+      `Get ready for more eliminations! 💀`,
+    priority: 'critical'
+  });
+  
+  // Resume drawing after 10 seconds
+  setTimeout(() => {
+    const currentGame = getCurrentGame(chatId);
+    if (currentGame && currentGame.state === 'DRAWING') {
+      startDrawing(chatId);
+    }
+  }, 10000);
+}
+
+async function handleRaidFailure(chatId: string, game: any, isFirstFailure: boolean = true) {
+  // Don't unpause on failure - require another raid
+  game.raidMessageCount = 0;
+  
+  if (isFirstFailure) {
+    await messageQueue.enqueue({
+      type: 'announcement', 
+      chatId: chatId,
+      content: `❌ **RAID FAILED!** ❌\n\n` +
+        `PATHETIC! Not enough engagement! 😤\n\n` +
+        `The lottery stays PAUSED until you complete a raid properly!\n` +
+        `💀 NO SUCCESSFUL RAID = NO PRIZES! 💀\n\n` +
+        `Waiting for the NEXT raid... and you better not fail again!`,
+      priority: 'critical'
+    });
+  } else {
+    await messageQueue.enqueue({
+      type: 'announcement',
+      chatId: chatId,
+      content: `🤬 **FAILED AGAIN?!** 🤬\n\n` +
+        `This is embarrassing! Still can't complete a simple raid?!\n\n` +
+        `🚫 LOTTERY REMAINS FROZEN 🚫\n` +
+        `Until you prove you deserve prizes by COMPLETING A RAID!\n\n` +
+        `Try harder next time! 💪`,
+      priority: 'critical'
+    });
+  }
+  
+  // Continue monitoring for next raid
+  game.raidFailureCount = (game.raidFailureCount || 0) + 1;
 }
 
 // Check for overdue games and schedules periodically
