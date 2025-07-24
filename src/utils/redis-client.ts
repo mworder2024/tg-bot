@@ -34,13 +34,7 @@ export async function initializeRedis(): Promise<void> {
 
     await redisClient.connect();
     
-    // Import data on first run if Redis is configured
-    try {
-      const { importDataIfNeeded } = require('../../scripts/import-on-start.js');
-      await importDataIfNeeded(redisClient);
-    } catch (importError) {
-      console.log('⚠️  Could not import initial data:', importError.message);
-    }
+    console.log('📊 Redis connection established - data migration handled by individual managers');
   } catch (error) {
     console.error('Failed to connect to Redis:', error);
     redisClient = null;
