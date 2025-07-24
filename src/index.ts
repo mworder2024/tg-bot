@@ -23,6 +23,13 @@ import {
   generatePrizeUpdate,
   generateSuspensefulPlayerList
 } from './utils/suspense-messages';
+import {
+  getGamePhaseMessage,
+  generateEliminationMessage,
+  getEnhancedCountdownSequence,
+  generateProgressMessage,
+  getPreEliminationTaunt
+} from './utils/enhanced-suspense-messages';
 import { escapeUsername } from './utils/markdown-escape';
 import { initializeRedis } from './utils/redis-client';
 import {
@@ -510,7 +517,7 @@ async function startDrawing(chatId: string) {
         });
         
         // Countdown sequence
-        const countdown = getRandomCountdownSequence();
+        const countdown = getEnhancedCountdownSequence();
         for (let i = 0; i < countdown.length; i++) {
           setTimeout(() => {
             messageQueue.enqueue({
@@ -539,6 +546,19 @@ async function startDrawing(chatId: string) {
     performActualDraw();
     
     async function performActualDraw() {
+      // Add pre-elimination taunt for early/mid game
+      if (activePlayers.size > 10 && drawNumber % 3 === 1) {
+        messageQueue.enqueue({
+          type: 'suspense',
+          chatId: currentGame.chatId,
+          content: getPreEliminationTaunt(activePlayers.size),
+          priority: 'normal'
+        });
+        
+        // Small delay for taunt to be read
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      
       // Draw numbers based on speed config
       const numbersToDraw = Math.min(speedConfig.numbersPerDraw, availableNumbers.length);
       const drawnNumbers = [];
@@ -597,6 +617,32 @@ async function startDrawing(chatId: string) {
         priority: 'high'
       });
       
+      // Add enhanced elimination messages
+      if (roundEliminated > 0) {
+        const allEliminated = Array.from(eliminatedByNumber.values()).flat();
+        const eliminationRoast = await generateEliminationMessage(allEliminated, chatId);
+        if (eliminationRoast) {
+          messageQueue.enqueue({
+            type: 'suspense',
+            chatId: currentGame.chatId,
+            content: eliminationRoast,
+            options: { parse_mode: 'Markdown' },
+            priority: 'normal'
+          });
+        }
+      }
+      
+      // Add game phase message periodically
+      if (drawNumber % 5 === 0 || (activePlayers.size < 20 && drawNumber % 3 === 0)) {
+        const phaseMessage = getGamePhaseMessage(activePlayers.size, currentGame.players.size);
+        messageQueue.enqueue({
+          type: 'suspense',
+          chatId: currentGame.chatId,
+          content: phaseMessage,
+          priority: 'low'
+        });
+      }
+      
       // Show player list if configured OR every 5 eliminations
       const shouldShowPlayerList = speedConfig.showPlayerList || 
         (totalEliminated - lastPlayerListAnnouncement >= 5 && activePlayers.size > currentGame.winnerCount);
@@ -652,6 +698,21 @@ async function startDrawing(chatId: string) {
         if (totalEliminated - lastPlayerListAnnouncement >= 5) {
           lastPlayerListAnnouncement = totalEliminated;
         }
+      }
+      
+      // Show progress with humor every 10 eliminations in large games
+      if (totalEliminated > 0 && totalEliminated % 10 === 0 && activePlayers.size > 20) {
+        const progressMsg = generateProgressMessage(
+          totalEliminated,
+          activePlayers.size,
+          drawNumber
+        );
+        messageQueue.enqueue({
+          type: 'suspense',
+          chatId: currentGame.chatId,
+          content: progressMsg,
+          priority: 'low'
+        });
       }
       
       // Show prize update near the end

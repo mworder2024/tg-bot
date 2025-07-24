@@ -68,12 +68,32 @@ export class GameSpeedManager {
       };
     }
 
-    // More than 20 players - fastest, 3 at a time
+    // 20-30 players - moderate speed, 2 at a time
+    if (remainingPlayers <= 30) {
+      return {
+        drawDelay: 10000, // 10 seconds
+        numbersPerDraw: 2,
+        showPlayerList: false,
+        suspenseMessages: true
+      };
+    }
+
+    // 30-40 players - slower for enjoyment, 2 at a time
+    if (remainingPlayers <= 40) {
+      return {
+        drawDelay: 12000, // 12 seconds
+        numbersPerDraw: 2,
+        showPlayerList: false,
+        suspenseMessages: true
+      };
+    }
+
+    // More than 40 players - still entertaining, 3 at a time
     return {
-      drawDelay: 6000, // 6 seconds
+      drawDelay: 10000, // 10 seconds (slower than before)
       numbersPerDraw: 3,
       showPlayerList: false,
-      suspenseMessages: false
+      suspenseMessages: true
     };
   }
 

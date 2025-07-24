@@ -68,11 +68,13 @@ export async function handleStatsCommand(ctx: Context): Promise<void> {
     } else {
       const winRate = (stats.gamesWon / stats.gamesEntered * 100).toFixed(1);
       const globalRank = await leaderboard.getPlayerRankAsync(userId);
+      const totalWinnings = prizeManager.getUserTotalWinnings(userId);
       
       statsMessage += `🏆 Rank: #${globalRank || 'Unranked'}\n`;
       statsMessage += `🏅 Games Won: ${stats.gamesWon}\n`;
       statsMessage += `🎮 Games Entered: ${stats.gamesEntered}\n`;
       statsMessage += `📈 Win Rate: ${winRate}%\n`;
+      statsMessage += `💰 Total Winnings: ${totalWinnings.toLocaleString()} tokens\n`;
       
       // Get recent games
       const recentGames = leaderboard.getPlayerRecentGames(userId, 5);
