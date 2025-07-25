@@ -91,11 +91,53 @@ gameScheduler.setGameCreateCallback((chatId: string, config: any) => {
 callbackManager.setGetCurrentGame(() => null); // Not used but required for compatibility
 
 // Helper functions
+// Modified to support multiple games per chat
+const multiGameStates = new Map<string, Map<string, any>>(); // chatId -> Map<gameId, game>
+
+function getGamesForChat(chatId: string): Map<string, any> {
+  if (!multiGameStates.has(chatId)) {
+    multiGameStates.set(chatId, new Map());
+  }
+  return multiGameStates.get(chatId)!;
+}
+
+function getActiveGames(chatId: string): any[] {
+  const games = getGamesForChat(chatId);
+  return Array.from(games.values()).filter(game => 
+    game.state === 'WAITING' || game.state === 'DRAWING' || game.state === 'PAUSED'
+  );
+}
+
+function getGameById(chatId: string, gameId: string): any {
+  const games = getGamesForChat(chatId);
+  return games.get(gameId) || null;
+}
+
+function addGame(chatId: string, game: any): void {
+  const games = getGamesForChat(chatId);
+  games.set(game.gameId, game);
+  // Still save to persistence (will need to update persistence logic later)
+  gamePersistence.saveGames(gameStates);
+}
+
+function removeGame(chatId: string, gameId: string): void {
+  const games = getGamesForChat(chatId);
+  games.delete(gameId);
+  gamePersistence.saveGames(gameStates);
+}
+
+// Legacy compatibility functions (will be phased out)
 function getCurrentGame(chatId: string): any {
-  return gameStates.get(chatId) || null;
+  // Return the first active game for backward compatibility
+  const activeGames = getActiveGames(chatId);
+  return activeGames.length > 0 ? activeGames[0] : null;
 }
 
 function setCurrentGame(chatId: string, game: any): void {
+  if (game) {
+    addGame(chatId, game);
+  }
+  // Update legacy storage for backward compatibility
   gameStates.set(chatId, game);
   gamePersistence.saveGames(gameStates);
 }
@@ -143,18 +185,22 @@ bot.command('create', async (ctx) => {
     return ctx.reply('❌ Only admins can create games.');
   }
   
-  const currentGame = getCurrentGame(chatId);
-  if (currentGame && currentGame.state !== 'FINISHED') {
-    return ctx.reply(
-      `🎮 A game is already active!\n\n` +
-      `Players: ${currentGame.players.size}/${currentGame.maxPlayers}\n` +
-      `Use /join to participate.`
-    );
-  }
-  
   // Parse configuration
   const commandText = ctx.message?.text || '';
   const config = parseGameConfig(commandText);
+  
+  // Check for active games but allow multiple
+  const activeGames = getActiveGames(chatId);
+  const hasNormalGame = activeGames.some(g => !g.isSpecialEvent);
+  const hasEventGame = activeGames.some(g => g.isSpecialEvent);
+  
+  // Prevent creating duplicate game types
+  if (config.isSpecialEvent && hasEventGame) {
+    return ctx.reply('❌ A special event is already running!');
+  }
+  if (!config.isSpecialEvent && hasNormalGame) {
+    return ctx.reply('❌ A regular lottery is already running!');
+  }
   
   const newGame = {
     id: `${chatId}_${Date.now()}`,
@@ -176,7 +222,10 @@ bot.command('create', async (ctx) => {
     raidEnabled: config.raidEnabled,
     raidPaused: false,
     raidStartTime: null as Date | null,
-    raidMessageCount: 0
+    raidMessageCount: 0,
+    isSpecialEvent: config.isSpecialEvent,
+    eventPrize: config.eventPrize,
+    eventName: config.eventName
   };
   
   // Schedule game with absolute time
@@ -184,7 +233,7 @@ bot.command('create', async (ctx) => {
     newGame.gameId,
     chatId,
     config.startMinutes,
-    () => startGame(chatId)
+    () => startGame(chatId, newGame.gameId)
   );
   
   newGame.scheduledStartTime = startTime;
@@ -202,11 +251,23 @@ bot.command('create', async (ctx) => {
     minute: '2-digit' 
   });
     
-  let announceMessage = 
-    `🎰 **Survival Lottery Created!**\n\n` +
-    `🎲 Game ID: \`${newGame.gameId}\`\n` +
-    `👤 Created by: ${username}\n` +
-    `👥 Players: 1/${newGame.maxPlayers}\n`;
+  let announceMessage;
+  
+  if (config.isSpecialEvent) {
+    announceMessage = 
+      `🎉 **SPECIAL EVENT CREATED!**\n\n` +
+      `🏆 Event: "${config.eventName}"\n` +
+      `💰 Prize Pool: ${config.eventPrize.toLocaleString()} tokens\n` +
+      `🎲 Game ID: \`${newGame.gameId}\`\n` +
+      `👤 Created by: ${username}\n` +
+      `👥 Players: 1/${newGame.maxPlayers}\n`;
+  } else {
+    announceMessage = 
+      `🎰 **Survival Lottery Created!**\n\n` +
+      `🎲 Game ID: \`${newGame.gameId}\`\n` +
+      `👤 Created by: ${username}\n` +
+      `👥 Players: 1/${newGame.maxPlayers}\n`;
+  }
   
   if (config.requiresApproval) {
     announceMessage += `⏸️ **AWAITING ADMIN APPROVAL**\n`;
@@ -257,29 +318,69 @@ bot.command('join', async (ctx) => {
   const chatId = ctx.chat.id.toString();
   
   if (!(await groupManager.isGroupEnabled(chatId))) {
-    // No response needed
     return;
   }
   
-  const currentGame = getCurrentGame(chatId);
+  const activeGames = getActiveGames(chatId);
+  const waitingGames = activeGames.filter(g => g.state === 'WAITING');
   
-  if (!currentGame || currentGame.state !== 'WAITING') {
-    // No response - game either doesn't exist or already started
+  if (waitingGames.length === 0) {
+    await ctx.reply('❌ No active lotteries to join!');
     return;
   }
   
-  if (currentGame.players.has(userId)) {
-    // Already in game - no response
+  if (waitingGames.length === 1) {
+    // Only one game, join directly
+    await joinGame(ctx, chatId, waitingGames[0].gameId, userId, username);
     return;
   }
   
-  if (currentGame.players.size >= currentGame.maxPlayers) {
-    // Game full - no response
+  // Multiple games - show selection menu
+  const keyboard = {
+    inline_keyboard: waitingGames.map(game => {
+      const gameLabel = game.isSpecialEvent 
+        ? `🎉 ${game.eventName} (${game.players.size}/${game.maxPlayers})`
+        : `🎰 Regular Lottery (${game.players.size}/${game.maxPlayers})`;
+      
+      return [{
+        text: gameLabel,
+        callback_data: `join_game:${game.gameId}`
+      }];
+    })
+  };
+  
+  keyboard.inline_keyboard.push([{
+    text: '❌ Cancel',
+    callback_data: 'cancel_join'
+  }]);
+  
+  await ctx.reply('🎮 **Select a lottery to join:**', {
+    parse_mode: 'Markdown',
+    reply_markup: keyboard
+  });
+});
+
+// Helper function to join a specific game
+async function joinGame(ctx: Context, chatId: string, gameId: string, userId: string, username: string) {
+  const game = getGameById(chatId, gameId);
+  
+  if (!game || game.state !== 'WAITING') {
+    await ctx.reply('❌ This game is no longer available.');
+    return;
+  }
+  
+  if (game.players.has(userId)) {
+    await ctx.reply('✅ You are already in this game!');
+    return;
+  }
+  
+  if (game.players.size >= game.maxPlayers) {
+    await ctx.reply('❌ This game is full!');
     return;
   }
   
   // Add player
-  currentGame.players.set(userId, {
+  game.players.set(userId, {
     id: userId,
     username,
     joinedAt: new Date()
@@ -287,24 +388,23 @@ bot.command('join', async (ctx) => {
   
   leaderboard.recordPlayerEntrySync(userId, username);
   
-  // Personal confirmation removed - only group announcement needed
-  
   // Announce to group that player joined
+  const gameLabel = game.isSpecialEvent ? `[${game.eventName}]` : '';
   messageQueue.enqueue({
     type: 'game',
     chatId,
-    content: `👤 **${escapeUsername(username)}** joined! ${currentGame.players.size}/${currentGame.maxPlayers}`,
+    content: `👤 **${escapeUsername(username)}** joined${gameLabel ? ' ' + gameLabel : ''}! ${game.players.size}/${game.maxPlayers}`,
     options: { parse_mode: 'Markdown' },
     priority: 'normal'
   });
   
   // Update game state
-  messageQueue.clearGameMessages(chatId, currentGame.state);
+  messageQueue.clearGameMessages(chatId, game.state);
   
   // Check if game is full
-  if (currentGame.players.size >= currentGame.maxPlayers) {
+  if (game.players.size >= game.maxPlayers) {
     // Cancel scheduled start
-    gameTimerManager.cancelGame(currentGame.gameId);
+    gameTimerManager.cancelGame(game.gameId);
     
     // Flush join messages immediately
     messageQueue.flushAllJoinBundles();
@@ -312,25 +412,33 @@ bot.command('join', async (ctx) => {
     // Announce and start in 5 seconds
     messageQueue.enqueue({
       type: 'announcement',
-      chatId: currentGame.chatId,
+      chatId: game.chatId,
       content: `🎮 **Game Full! Starting in 5 seconds...**`,
       options: { parse_mode: 'Markdown' },
       priority: 'high'
     });
     
     setTimeout(() => {
-      const game = getCurrentGame(chatId);
-      if (game && game.state === 'WAITING') {
-        startGame(chatId);
+      const checkGame = getGameById(chatId, game.gameId);
+      if (checkGame && checkGame.state === 'WAITING') {
+        startGame(chatId, game.gameId);
       }
     }, 5000);
   }
-});
+}
 
 
 // Start game function
-async function startGame(chatId: string) {
-  const currentGame = getCurrentGame(chatId);
+async function startGame(chatId: string, gameId?: string) {
+  let currentGame;
+  
+  if (gameId) {
+    currentGame = getGameById(chatId, gameId);
+  } else {
+    // Legacy support - find first waiting game
+    currentGame = getCurrentGame(chatId);
+  }
+  
   if (!currentGame || currentGame.state !== 'WAITING') return;
   
   // Check if approval is required and not yet approved
@@ -363,16 +471,27 @@ async function startGame(chatId: string) {
   // Clear join messages from queue
   messageQueue.clearGameMessages(chatId, 'STARTING');
   
-  // Generate prize based on player count
-  const prizeGeneration = prizeManager.generatePrize(currentGame.gameId, currentGame.players.size);
-  const totalPrize = prizeGeneration.amount;
+  // Generate prize based on player count or use event prize
+  let totalPrize, vrfProof;
+  
+  if (currentGame.isSpecialEvent && currentGame.eventPrize > 0) {
+    // Use custom event prize
+    totalPrize = currentGame.eventPrize;
+    vrfProof = 'event-custom'; // No VRF needed for custom prizes
+  } else {
+    // Generate random prize using VRF
+    const prizeGeneration = prizeManager.generatePrize(currentGame.gameId, currentGame.players.size);
+    totalPrize = prizeGeneration.amount;
+    vrfProof = prizeGeneration.vrfProof;
+  }
+  
   const survivorCount = currentGame.winnerCount;
   const prizePerSurvivor = Math.floor(totalPrize / survivorCount);
   
   currentGame.prizeInfo = {
     totalPrize,
     prizePerSurvivor,
-    vrfProof: prizeGeneration.vrfProof
+    vrfProof: vrfProof
   };
   
   prizeManager.logPrize({
@@ -412,10 +531,19 @@ async function startGame(chatId: string) {
   playerList.sort((a: any, b: any) => a.number - b.number);
   
   // Single comprehensive start message
-  let startMessage = `🎲 **GAME STARTED!** 🎲\n\n`;
-  startMessage += `🆔 Game: ${currentGame.gameId}\n`;
+  let startMessage;
+  
+  if (currentGame.isSpecialEvent) {
+    startMessage = `🎉 **${currentGame.eventName.toUpperCase()} STARTED!** 🎉\n\n`;
+    startMessage += `🆔 Game: ${currentGame.gameId}\n`;
+    startMessage += `🏆 Event Prize: **${totalPrize.toLocaleString()}** tokens\n`;
+  } else {
+    startMessage = `🎲 **GAME STARTED!** 🎲\n\n`;
+    startMessage += `🆔 Game: ${currentGame.gameId}\n`;
+    startMessage += `💰 Prize Pool: **${totalPrize.toLocaleString()}** tokens\n`;
+  }
+  
   startMessage += `👥 Players: ${playerCount}\n`;
-  startMessage += `💰 Prize Pool: **${totalPrize.toLocaleString()}** tokens\n`;
   startMessage += `🏆 Survivors: ${survivorCount}\n`;
   startMessage += `🔢 Number Range: 1-${currentGame.numberRange.max}\n\n`;
   startMessage += `**All Player Numbers:**\n`;
@@ -881,8 +1009,16 @@ async function finishGame(chatId: string, activePlayers: Set<string>) {
   leaderboard.recordGame(gameRecord);
   
   // Winner announcement
-  let winnerMessage = `🏆 **GAME COMPLETE!** 🏆\n\n`;
-  winnerMessage += `🎲 Game: ${currentGame.gameId}\n\n`;
+  let winnerMessage;
+  
+  if (currentGame.isSpecialEvent) {
+    winnerMessage = `🎉 **${currentGame.eventName.toUpperCase()} COMPLETE!** 🎉\n\n`;
+    winnerMessage += `🎲 Game: ${currentGame.gameId}\n`;
+    winnerMessage += `🏆 Event Prize Pool: ${totalPrize.toLocaleString()} tokens\n\n`;
+  } else {
+    winnerMessage = `🏆 **GAME COMPLETE!** 🏆\n\n`;
+    winnerMessage += `🎲 Game: ${currentGame.gameId}\n\n`;
+  }
   
   if (winners.length === 0) {
     winnerMessage += `💀 **No survivors!** All eliminated!\n`;
@@ -912,27 +1048,40 @@ async function finishGame(chatId: string, activePlayers: Set<string>) {
 // Command: /status
 bot.command('status', async (ctx): Promise<any> => {
   const chatId = ctx.chat.id.toString();
-  const currentGame = getCurrentGame(chatId);
+  const activeGames = getActiveGames(chatId);
   
-  if (!currentGame) {
-    return ctx.reply(`🎮 No active game. Use /create to start.`);
+  if (activeGames.length === 0) {
+    return ctx.reply(`🎮 No active games. Use /create to start.`);
   }
   
-  const timeUntil = gameTimerManager.getFormattedTimeUntil(currentGame.gameId);
-  const startTime = gameTimerManager.getStartTime(currentGame.gameId);
   const queueStats = messageQueue.getStats();
   
-  let message = `📊 **Game Status**\n\n`;
-  message += `🎲 ID: ${currentGame.gameId}\n`;
-  message += `📊 State: ${currentGame.state}\n`;
-  message += `👥 Players: ${currentGame.players.size}/${currentGame.maxPlayers}\n`;
+  let message = `📊 **Active Games**\n\n`;
   
-  if (currentGame.state === 'WAITING' && startTime) {
-    message += `⏰ Starts: ${startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (in ${timeUntil})`;
+  for (const game of activeGames) {
+    const timeUntil = gameTimerManager.getFormattedTimeUntil(game.gameId);
+    const startTime = gameTimerManager.getStartTime(game.gameId);
+    
+    if (game.isSpecialEvent) {
+      message += `🎉 **${game.eventName}**\n`;
+      message += `💰 Prize: ${game.eventPrize.toLocaleString()} tokens\n`;
+    } else {
+      message += `🎰 **Regular Lottery**\n`;
+    }
+    
+    message += `🎲 ID: ${game.gameId}\n`;
+    message += `📊 State: ${game.state}\n`;
+    message += `👥 Players: ${game.players.size}/${game.maxPlayers}\n`;
+    
+    if (game.state === 'WAITING' && startTime) {
+      message += `⏰ Starts: ${startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (in ${timeUntil})`;
+    }
+    
+    message += `\n\n`;
   }
   
   if (queueStats.queueSize > 0) {
-    message += `\n\n📬 Message Queue: ${queueStats.queueSize}`;
+    message += `📬 Message Queue: ${queueStats.queueSize}`;
   }
   
   await ctx.reply(message, { parse_mode: 'Markdown' });
@@ -1119,13 +1268,8 @@ bot.command('endgame', async (ctx): Promise<any> => {
     return ctx.reply('❌ No active game to end.');
   }
   
-  // Mark game as finished and clean up
-  currentGame.state = 'FINISHED';
-  currentGame.endedAt = new Date();
-  setCurrentGame(chatId, currentGame);
-  
-  // Cancel any active timers
-  gameTimerManager.cancelGame(currentGame.gameId);
+  // Cancel the lottery game using the helper function
+  await cancelLotteryGame(chatId, currentGame, 'ADMIN_MANUAL');
   
   // Clear message queue for this chat
   // Note: clearQueue method doesn't exist, we'll just let the queue process normally
@@ -1824,7 +1968,7 @@ async function createScheduledGame(chatId: string, config: any) {
     newGame.gameId,
     chatId,
     config.startMinutes,
-    () => startGame(chatId)
+    () => startGame(chatId, newGame.gameId)
   );
   
   newGame.scheduledStartTime = startTime;
@@ -1908,7 +2052,10 @@ function parseGameConfig(text: string) {
     selectionMultiplier: gameDefaults.defaultNumberMultiplier,
     survivorsOverride: false,
     requiresApproval: false,
-    raidEnabled: false
+    raidEnabled: false,
+    isSpecialEvent: false,
+    eventPrize: 0,
+    eventName: ''
   };
 
   const maxMatch = text.match(/(?:--?|—)max\s+(\d+)/i);
@@ -1932,9 +2079,20 @@ function parseGameConfig(text: string) {
     config.requiresApproval = true;
   }
 
-  // Check for raid flag
+  // Check for raid flags
   if (text.match(/(?:--?|—)raid/i)) {
     config.raidEnabled = true;
+  }
+  if (text.match(/(?:--?|—)no-?raid/i)) {
+    config.raidEnabled = false;
+  }
+
+  // Check for special event flag
+  const eventMatch = text.match(/(?:--?|—)event\s+(\d+)\s+"([^"]+)"/i);
+  if (eventMatch) {
+    config.isSpecialEvent = true;
+    config.eventPrize = Math.min(Math.max(parseInt(eventMatch[1]), 1000), 1000000); // Between 1k and 1M
+    config.eventName = eventMatch[2].substring(0, 50); // Limit event name to 50 chars
   }
 
   // Auto-calculate survivors
@@ -2050,8 +2208,22 @@ async function handleRaidSuccess(chatId: string, game: any) {
   }, 10000);
 }
 
+// Helper function to cancel a lottery game
+async function cancelLotteryGame(chatId: string, game: any, reason: string = 'MANUAL') {
+  // Mark game as finished and clean up
+  game.state = 'FINISHED';
+  game.endedAt = new Date();
+  game.cancelReason = reason;
+  setCurrentGame(chatId, game);
+  
+  // Cancel any active timers
+  gameTimerManager.cancelGame(game.gameId);
+  
+  logger.info(`Game ${game.gameId} cancelled due to: ${reason}`);
+}
+
 async function handleRaidFailure(chatId: string, game: any, isFirstFailure: boolean = true) {
-  // Don't unpause on failure - require another raid
+  // Don't unpause on failure - cancel the lottery
   game.raidMessageCount = 0;
   
   if (isFirstFailure) {
@@ -2060,9 +2232,9 @@ async function handleRaidFailure(chatId: string, game: any, isFirstFailure: bool
       chatId: chatId,
       content: `❌ **RAID FAILED!** ❌\n\n` +
         `PATHETIC! Not enough engagement! 😤\n\n` +
-        `The lottery stays PAUSED until you complete a raid properly!\n` +
+        `🔚 **LOTTERY CANCELLED!** 🔚\n` +
         `💀 NO SUCCESSFUL RAID = NO PRIZES! 💀\n\n` +
-        `Waiting for the NEXT raid... and you better not fail again!`,
+        `Game over! Create a new lottery if you dare to try again!`,
       priority: 'critical'
     });
   } else {
@@ -2071,14 +2243,17 @@ async function handleRaidFailure(chatId: string, game: any, isFirstFailure: bool
       chatId: chatId,
       content: `🤬 **FAILED AGAIN?!** 🤬\n\n` +
         `This is embarrassing! Still can't complete a simple raid?!\n\n` +
-        `🚫 LOTTERY REMAINS FROZEN 🚫\n` +
-        `Until you prove you deserve prizes by COMPLETING A RAID!\n\n` +
-        `Try harder next time! 💪`,
+        `🔚 **LOTTERY CANCELLED!** 🔚\n` +
+        `You don't deserve prizes! Game is OVER!\n\n` +
+        `Try creating a new game when you're ready to actually participate! 💪`,
       priority: 'critical'
     });
   }
   
-  // Continue monitoring for next raid
+  // Cancel the lottery game when raid fails
+  await cancelLotteryGame(chatId, game, 'RAID_FAILURE');
+  
+  // Track failure count
   game.raidFailureCount = (game.raidFailureCount || 0) + 1;
 }
 
@@ -2121,6 +2296,25 @@ bot.on('callback_query', async (ctx): Promise<any> => {
     return;
   }
 
+  // Handle game join selection
+  if (data.startsWith('join_game:')) {
+    const gameId = data.split(':')[1];
+    const userId = ctx.from!.id.toString();
+    const username = ctx.from!.username || ctx.from!.first_name || 'Player';
+    const chatId = ctx.chat!.id.toString();
+    
+    await joinGame(ctx, chatId, gameId, userId, username);
+    await ctx.answerCbQuery();
+    await ctx.deleteMessage();
+    return;
+  }
+  
+  if (data === 'cancel_join') {
+    await ctx.answerCbQuery('Cancelled');
+    await ctx.deleteMessage();
+    return;
+  }
+  
   // Handle other callbacks (join, status, etc.)
   const [action, gameId] = data.split('_');
   
@@ -2373,11 +2567,16 @@ bot.command('help', (ctx) => {
   if (isAdmin) {
     message += '👑 **ADMIN COMMANDS:**\n';
     message += '• `/admin` - Admin panel\n';
+    message += '• `/create --event <prize> "<name>"` - Create special event\n';
     message += '• `/endgame` - End current game\n';
     message += '• `/pauselottery` - Pause active lottery\n';
     message += '• `/resumelottery` - Resume paused lottery\n';
     message += '• `/forcestart` - Force start waiting game\n';
     message += '• Group management and configuration\n\n';
+    
+    message += '🎉 **SPECIAL EVENTS:**\n';
+    message += 'Create events with custom prizes:\n';
+    message += '`/create --event 20000 "MWOR Madness"`\n\n';
   }
   
   message += '💡 **TIP:** Use `/start` for the interactive menu!';
@@ -2446,6 +2645,12 @@ bot.on('message', async (ctx) => {
       const messageText = message.text;
       
       // Check if there's an active game that can be paused for raids
+      if (messageText && (messageText.includes('⚔️ RAID IN PROGRESS ⚔️') || 
+                          messageText.includes('🚨 Raid ongoing') ||
+                          messageText.includes('RAID IN PROGRESS'))) {
+        logger.info(`Raid message detected. Current game: ${currentGame ? 'exists' : 'none'}, state: ${currentGame?.state}, raidEnabled: ${currentGame?.raidEnabled}`);
+      }
+      
       if (currentGame && currentGame.state === 'DRAWING' && currentGame.raidEnabled) {
         
         // Detect RAID IN PROGRESS - pause the game if not already paused
@@ -2453,6 +2658,7 @@ bot.on('message', async (ctx) => {
              messageText.includes('🚨 Raid ongoing') ||
              messageText.includes('RAID IN PROGRESS')) && !currentGame.raidPaused) {
           logger.info('Active raid detected - pausing lottery');
+          logger.info(`Game state: ${currentGame.state}, raidEnabled: ${currentGame.raidEnabled}, raidPaused: ${currentGame.raidPaused}`);
           
           // Check if we're past halfway point
           const totalPlayers = currentGame.players.size;

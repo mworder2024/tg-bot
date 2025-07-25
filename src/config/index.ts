@@ -5,7 +5,12 @@ dotenv.config();
 
 const env = cleanEnv(process.env, {
   // Bot Configuration
-  BOT_TOKEN: str({ desc: 'Telegram bot token' }),
+  BOT_TOKEN: str({ desc: 'Telegram bot token (production)' }),
+  BOT_TOKEN_DEV: str({ 
+    desc: 'Telegram bot token for development', 
+    default: '',
+    devDefault: '' 
+  }),
   ENVIRONMENT: str({ 
     default: 'development',
     choices: ['development', 'staging', 'production'] 
@@ -22,6 +27,11 @@ const env = cleanEnv(process.env, {
   REDIS_URL: str({ 
     default: 'redis://localhost:6379',
     desc: 'Redis connection string' 
+  }),
+  REDIS_URL_DEV: str({ 
+    desc: 'Redis connection string for development', 
+    default: 'redis://localhost:6379',
+    devDefault: 'redis://localhost:6379' 
   }),
   
   // API Server (optional - web/API removed)
@@ -102,9 +112,43 @@ const env = cleanEnv(process.env, {
   ENABLE_ANTHROPIC_INTEGRATION: bool({ default: true }),
 });
 
+// Auto-select appropriate bot token based on environment
+function getBotToken(): string {
+  const environment = env.ENVIRONMENT;
+  
+  if (environment === 'development') {
+    // Use development token if available, otherwise fall back to main token
+    if (env.BOT_TOKEN_DEV && env.BOT_TOKEN_DEV.trim() !== '') {
+      console.log('🔧 Using development bot token for local testing');
+      return env.BOT_TOKEN_DEV;
+    } else {
+      console.warn('⚠️  BOT_TOKEN_DEV not set! Using production token for development (may cause conflicts)');
+      return env.BOT_TOKEN;
+    }
+  }
+  
+  // Production/staging uses main token
+  console.log(`🚀 Using production bot token for ${environment} environment`);
+  return env.BOT_TOKEN;
+}
+
+// Auto-select appropriate Redis URL based on environment
+function getRedisUrl(): string {
+  const environment = env.ENVIRONMENT;
+  
+  if (environment === 'development') {
+    console.log('🔧 Using local Redis for development');
+    return env.REDIS_URL_DEV;
+  }
+  
+  // Production/staging uses main Redis
+  console.log(`🚀 Using production Redis for ${environment} environment`);
+  return env.REDIS_URL;
+}
+
 export default {
   bot: {
-    token: env.BOT_TOKEN,
+    token: getBotToken(),
     environment: env.ENVIRONMENT,
     webhookSecret: env.WEBHOOK_SECRET,
   },
@@ -114,7 +158,7 @@ export default {
   },
   
   redis: {
-    url: env.REDIS_URL,
+    url: getRedisUrl(),
   },
   
   api: {

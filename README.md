@@ -69,6 +69,20 @@ npm run dev
 npm run build && npm start
 ```
 
+### 🔧 Local Development
+
+**Important**: To prevent conflicts with production deployments, use a separate bot token for local development.
+
+1. Create a development bot on [@BotFather](https://t.me/BotFather)
+2. Add your dev token to `.env`:
+   ```env
+   BOT_TOKEN_DEV=your-development-bot-token
+   ENVIRONMENT=development
+   ```
+3. The system will automatically use local Redis and your dev bot
+
+See [LOCAL_DEVELOPMENT.md](./LOCAL_DEVELOPMENT.md) for detailed setup instructions.
+
 ## 📝 Bot Commands
 
 ### Player Commands
