@@ -56,7 +56,9 @@ const logger = winston.createLogger({
 });
 
 // Game states
-const gameStates: Map<string, any> = gamePersistence.loadGamesSync();
+// Load games into the new multi-game structure
+const loadedGames = gamePersistence.loadGamesSync();
+const gameStates = loadedGames; // Keep for compatibility
 
 // Create HTTPS agent
 const httpsAgent = new https.Agent({
@@ -92,13 +94,23 @@ callbackManager.setGetCurrentGame(() => null); // Not used but required for comp
 
 // Helper functions
 // Modified to support multiple games per chat
-const multiGameStates = new Map<string, Map<string, any>>(); // chatId -> Map<gameId, game>
 
 function getGamesForChat(chatId: string): Map<string, any> {
-  if (!multiGameStates.has(chatId)) {
-    multiGameStates.set(chatId, new Map());
+  if (!gameStates.has(chatId)) {
+    gameStates.set(chatId, new Map());
   }
-  return multiGameStates.get(chatId)!;
+  const chatGames = gameStates.get(chatId);
+  // Ensure it's a Map (for compatibility with old format)
+  if (!(chatGames instanceof Map)) {
+    // Convert old single-game format to new multi-game format
+    const newMap = new Map();
+    if (chatGames && chatGames.gameId) {
+      newMap.set(chatGames.gameId, chatGames);
+    }
+    gameStates.set(chatId, newMap);
+    return newMap;
+  }
+  return chatGames;
 }
 
 function getActiveGames(chatId: string): any[] {
