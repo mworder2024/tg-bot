@@ -1,4 +1,4 @@
-import { Telegraf } from 'telegraf';
+import { Telegraf, Context } from 'telegraf';
 import * as dotenv from 'dotenv';
 import * as winston from 'winston';
 import { VRF } from './utils/vrf';
@@ -495,7 +495,7 @@ async function startGame(chatId: string, gameId?: string) {
     totalSurvivors: survivorCount,
     prizePerSurvivor,
     timestamp: new Date(),
-    vrfProof: prizeGeneration.vrfProof,
+    vrfProof: vrfProof,
     chatId
   });
   
