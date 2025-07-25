@@ -16,6 +16,7 @@ import { gameSpeedManager } from './utils/game-speed-manager';
 import { gameScheduler, GameScheduler } from './utils/game-scheduler';
 import { adminMenu } from './utils/admin-menu';
 import { gameConfigManager } from './utils/game-config-manager';
+import { DashboardServer, formatGameDataForDashboard } from './dashboard/server';
 import {
   getRandomBubbleMessage,
   getRandomFinalDrawMessage,
@@ -46,7 +47,7 @@ dotenv.config();
 dns.setDefaultResultOrder('ipv4first');
 
 // Configure logger
-const logger = winston.createLogger({
+export const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
   format: winston.format.simple(),
   transports: [
@@ -2741,11 +2742,30 @@ async function startBot() {
     
     await bot.launch();
     
+    // Start dashboard server
+    const dashboardPort = parseInt(process.env.DASHBOARD_PORT || '3000');
+    const dashboardToken = process.env.DASHBOARD_AUTH_TOKEN || 'admin123';
+    const dashboard = new DashboardServer(dashboardPort, dashboardToken);
+    
+    // Set up game data callback
+    dashboard.setGameDataCallback(() => formatGameDataForDashboard(gameStates));
+    
+    // Start dashboard
+    dashboard.start();
+    
+    // Update dashboard on game state changes
+    const originalSaveGames = gamePersistence.saveGames.bind(gamePersistence);
+    gamePersistence.saveGames = async (states: Map<string, any>) => {
+      await originalSaveGames(states);
+      dashboard.updateGames(formatGameDataForDashboard(states));
+    };
+    
     console.log('🎰 Enhanced Lottery Bot Running!');
     console.log('📬 Advanced message queuing active');
     console.log('🎯 Dynamic game speed enabled');
     console.log('🎭 Suspense messages ready');
     console.log('🚀 Zero response to late joins');
+    console.log(`🌐 Dashboard: http://localhost:${dashboardPort}`);
     
   } catch (error: any) {
     logger.error('Failed to start bot:', error.message);

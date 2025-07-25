@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lottery Bot Dashboard</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <style>
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .pulse { animation: pulse 2s infinite; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="bg-gray-900 text-white" x-data="dashboard()">
+    <!-- Header -->
+    <header class="bg-gray-800 shadow-lg">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex justify-between items-center">
+                <h1 class="text-2xl font-bold flex items-center">
+                    <span class="text-3xl mr-2">🎰</span>
+                    Lottery Bot Dashboard
+                </h1>
+                <div class="flex items-center space-x-4">
+                    <div class="flex items-center">
+                        <div class="w-3 h-3 rounded-full mr-2" :class="connected ? 'bg-green-500 pulse' : 'bg-red-500'"></div>
+                        <span class="text-sm" x-text="connected ? 'Connected' : 'Disconnected'"></span>
+                    </div>
+                    <button @click="refreshData" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition">
+                        🔄 Refresh
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Stats Overview -->
+    <div class="container mx-auto px-4 py-6">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-gray-800 rounded-lg p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-400 text-sm">Active Games</p>
+                        <p class="text-3xl font-bold" x-text="stats.totalActiveGames || 0"></p>
+                    </div>
+                    <span class="text-4xl">🎮</span>
+                </div>
+            </div>
+            
+            <div class="bg-gray-800 rounded-lg p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-400 text-sm">Total Players</p>
+                        <p class="text-3xl font-bold" x-text="stats.totalPlayers || 0"></p>
+                    </div>
+                    <span class="text-4xl">👥</span>
+                </div>
+            </div>
+            
+            <div class="bg-gray-800 rounded-lg p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-400 text-sm">Prize Pool</p>
+                        <p class="text-3xl font-bold" x-text="formatPrize(stats.totalPrizePool || 0)"></p>
+                    </div>
+                    <span class="text-4xl">💰</span>
+                </div>
+            </div>
+            
+            <div class="bg-gray-800 rounded-lg p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-400 text-sm">Special Events</p>
+                        <p class="text-3xl font-bold" x-text="stats.gamesByType?.special || 0"></p>
+                    </div>
+                    <span class="text-4xl">🎉</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game States Distribution -->
+        <div class="bg-gray-800 rounded-lg p-6 mb-6">
+            <h2 class="text-xl font-bold mb-4">Game States</h2>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <template x-for="[state, count] in Object.entries(stats.gamesByState || {})" :key="state">
+                    <div class="text-center">
+                        <div class="text-2xl font-bold" x-text="count"></div>
+                        <div class="text-sm text-gray-400" x-text="state"></div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Active Games -->
+        <div class="bg-gray-800 rounded-lg p-6">
+            <h2 class="text-xl font-bold mb-4">Active Games</h2>
+            
+            <div class="space-y-4 max-h-96 overflow-y-auto scrollbar-hide">
+                <template x-for="chatId in Object.keys(games)" :key="chatId">
+                    <div>
+                        <h3 class="text-lg font-semibold mb-2 text-gray-300">Chat: <span x-text="chatId"></span></h3>
+                        <div class="space-y-2">
+                            <template x-for="game in games[chatId]" :key="game.gameId">
+                                <div class="bg-gray-700 rounded-lg p-4" :class="{'border-2 border-yellow-500': game.isSpecialEvent}">
+                                    <div class="flex justify-between items-start mb-2">
+                                        <div>
+                                            <div class="flex items-center space-x-2">
+                                                <span class="font-bold text-lg" x-text="game.gameId"></span>
+                                                <span x-show="game.isSpecialEvent" class="bg-yellow-600 text-xs px-2 py-1 rounded">
+                                                    🎉 <span x-text="game.eventName"></span>
+                                                </span>
+                                                <span class="px-2 py-1 rounded text-xs" 
+                                                      :class="{
+                                                          'bg-green-600': game.state === 'WAITING',
+                                                          'bg-blue-600': game.state === 'DRAWING',
+                                                          'bg-gray-600': game.state === 'FINISHED',
+                                                          'bg-yellow-600': game.state === 'PAUSED'
+                                                      }"
+                                                      x-text="game.state">
+                                                </span>
+                                            </div>
+                                            <div class="text-sm text-gray-400 mt-1">
+                                                Created: <span x-text="formatTime(game.createdAt)"></span>
+                                            </div>
+                                        </div>
+                                        <div class="text-right">
+                                            <div class="text-2xl font-bold" x-text="formatPrize(game.eventPrize || game.prize?.totalPrize || 0)"></div>
+                                            <div class="text-sm text-gray-400">Prize Pool</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                                        <div>
+                                            <span class="text-gray-400">Players:</span>
+                                            <span class="font-semibold" x-text="`${game.players.count}/${game.players.max}`"></span>
+                                        </div>
+                                        <div>
+                                            <span class="text-gray-400">Winners:</span>
+                                            <span class="font-semibold" x-text="game.winnerCount"></span>
+                                        </div>
+                                        <div>
+                                            <span class="text-gray-400">Eliminated:</span>
+                                            <span class="font-semibold" x-text="game.eliminatedCount"></span>
+                                        </div>
+                                        <div>
+                                            <span class="text-gray-400">Active:</span>
+                                            <span class="font-semibold" x-text="game.activePlayers"></span>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Player List Toggle -->
+                                    <div class="mt-3">
+                                        <button @click="game.showPlayers = !game.showPlayers" 
+                                                class="text-sm text-blue-400 hover:text-blue-300">
+                                            <span x-text="game.showPlayers ? '▼' : '▶'"></span>
+                                            Show Players
+                                        </button>
+                                        <div x-show="game.showPlayers" class="mt-2 grid grid-cols-2 md:grid-cols-3 gap-1 text-xs">
+                                            <template x-for="player in game.players.list" :key="player.id">
+                                                <div class="bg-gray-600 rounded px-2 py-1">
+                                                    <span x-text="player.username"></span>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+            
+            <div x-show="Object.keys(games).length === 0" class="text-center text-gray-400 py-8">
+                No active games
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function dashboard() {
+            return {
+                connected: false,
+                games: {},
+                stats: {},
+                socket: null,
+                authToken: localStorage.getItem('dashboardAuthToken') || '',
+
+                init() {
+                    // Prompt for auth token if not set
+                    if (!this.authToken) {
+                        this.authToken = prompt('Enter dashboard auth token:') || '';
+                        localStorage.setItem('dashboardAuthToken', this.authToken);
+                    }
+
+                    // Connect to WebSocket
+                    this.socket = io({
+                        auth: {
+                            token: this.authToken
+                        }
+                    });
+
+                    this.socket.on('connect', () => {
+                        this.connected = true;
+                        console.log('Connected to dashboard server');
+                    });
+
+                    this.socket.on('disconnect', () => {
+                        this.connected = false;
+                        console.log('Disconnected from dashboard server');
+                    });
+
+                    this.socket.on('gameUpdate', (data) => {
+                        this.games = data.games || {};
+                        this.stats = data.stats || {};
+                        console.log('Game data updated:', data);
+                    });
+
+                    // Initial data fetch
+                    this.refreshData();
+                },
+
+                async refreshData() {
+                    try {
+                        const response = await fetch('/api/games', {
+                            headers: {
+                                'Authorization': `Bearer ${this.authToken}`
+                            }
+                        });
+                        const data = await response.json();
+                        this.games = data.games || {};
+                        this.stats = data.stats || {};
+                    } catch (error) {
+                        console.error('Failed to fetch game data:', error);
+                    }
+                },
+
+                formatPrize(amount) {
+                    if (!amount) return '0';
+                    return amount.toLocaleString();
+                },
+
+                formatTime(timestamp) {
+                    if (!timestamp) return 'N/A';
+                    const date = new Date(timestamp);
+                    return date.toLocaleTimeString();
+                }
+            }
+        }
+    </script>
+</body>
+</html>
