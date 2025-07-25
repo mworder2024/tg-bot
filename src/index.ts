@@ -189,17 +189,12 @@ bot.command('create', async (ctx) => {
   const commandText = ctx.message?.text || '';
   const config = parseGameConfig(commandText);
   
-  // Check for active games but allow multiple
+  // Check for active games
   const activeGames = getActiveGames(chatId);
-  const hasNormalGame = activeGames.some(g => !g.isSpecialEvent);
-  const hasEventGame = activeGames.some(g => g.isSpecialEvent);
   
-  // Prevent creating duplicate game types
-  if (config.isSpecialEvent && hasEventGame) {
-    return ctx.reply('❌ A special event is already running!');
-  }
-  if (!config.isSpecialEvent && hasNormalGame) {
-    return ctx.reply('❌ A regular lottery is already running!');
+  // Allow multiple games but set a reasonable limit
+  if (activeGames.length >= 5) {
+    return ctx.reply('❌ Maximum number of concurrent games reached (5)!');
   }
   
   const newGame = {
@@ -1180,9 +1175,10 @@ bot.command('approve', async (ctx): Promise<any> => {
 
 // Handle inline button callbacks
 // Handle all callbacks through the callback manager
-bot.on('callback_query', async (ctx) => {
-  await callbackManager.handleCallback(ctx as any);
-});
+// COMMENTED OUT: This was intercepting our custom callbacks
+// bot.on('callback_query', async (ctx) => {
+//   await callbackManager.handleCallback(ctx as any);
+// });
 
 // Legacy action handlers (kept for compatibility)
 bot.action(/join_(.+)/, async (ctx) => {
@@ -1744,10 +1740,20 @@ function sendGameAnnouncement(chatId: string, game: any, minutesLeft: number, in
     timeText = `${minutesLeft} minutes`;
   }
   
-  let message = `🎰 **Scheduled Game Reminder!**\n\n`;
-  message += `🎲 Game ID: \`${game.gameId}\`\n`;
-  message += `⏰ **Starting in ${timeText}**\n`;
-  message += `👥 Players: **${playerCount}/${game.maxPlayers}**\n`;
+  let message;
+  
+  if (game.isSpecialEvent) {
+    message = `🎉 **${game.eventName} - EVENT REMINDER!** 🎉\n\n`;
+    message += `🏆 Event Prize: **${game.eventPrize.toLocaleString()} tokens**\n`;
+    message += `🎲 Game ID: \`${game.gameId}\`\n`;
+    message += `⏰ **Starting in ${timeText}**\n`;
+    message += `👥 Players: **${playerCount}/${game.maxPlayers}**\n`;
+  } else {
+    message = `🎰 **Scheduled Game Reminder!**\n\n`;
+    message += `🎲 Game ID: \`${game.gameId}\`\n`;
+    message += `⏰ **Starting in ${timeText}**\n`;
+    message += `👥 Players: **${playerCount}/${game.maxPlayers}**\n`;
+  }
   
   if (playerCount > 0) {
     // Show progress bar
@@ -1870,10 +1876,20 @@ function scheduleGameAnnouncements(chatId: string, game: any, totalMinutes: numb
 function sendFinalCountdown(chatId: string, game: any, seconds: number) {
   const playerCount = game.players.size;
   
-  let message = `⏱️ **${seconds} SECONDS!**\n\n`;
-  message += `🎮 Game starting in ${seconds} seconds!\n`;
-  message += `👥 ${playerCount} players ready\n`;
-  message += `\n💨 Last chance to join!`;
+  let message;
+  
+  if (game.isSpecialEvent) {
+    message = `⏱️ **${seconds} SECONDS TO ${game.eventName.toUpperCase()}!** ⏱️\n\n`;
+    message += `🎉 Event starts in ${seconds} seconds!\n`;
+    message += `💰 Prize Pool: **${game.eventPrize.toLocaleString()} tokens**\n`;
+    message += `👥 ${playerCount} players competing\n`;
+    message += `\n🚀 LAST CHANCE TO JOIN THE EVENT!`;
+  } else {
+    message = `⏱️ **${seconds} SECONDS!**\n\n`;
+    message += `🎮 Game starting in ${seconds} seconds!\n`;
+    message += `👥 ${playerCount} players ready\n`;
+    message += `\n💨 Last chance to join!`;
+  }
   
   messageQueue.enqueue({
     type: 'announcement',
@@ -1888,10 +1904,19 @@ function sendFinalCountdown(chatId: string, game: any, seconds: number) {
 function sendEntriesClosedAnnouncement(chatId: string, game: any) {
   const playerCount = game.players.size;
   
-  let message = `🚫 **ENTRIES CLOSED!**\n\n`;
-  message += `🎰 Lottery starting in 5 seconds...\n`;
-  message += `👥 Final player count: **${playerCount}**\n`;
-  message += `\n🎲 Get ready for the draw!`;
+  let message;
+  
+  if (game.isSpecialEvent) {
+    message = `🚫 **${game.eventName.toUpperCase()} ENTRIES CLOSED!** 🚫\n\n`;
+    message += `🎉 Event starting in 5 seconds...\n`;
+    message += `💰 ${playerCount} players competing for **${game.eventPrize.toLocaleString()} tokens**!\n`;
+    message += `\n🏆 May the best player win!`;
+  } else {
+    message = `🚫 **ENTRIES CLOSED!**\n\n`;
+    message += `🎰 Lottery starting in 5 seconds...\n`;
+    message += `👥 Final player count: **${playerCount}**\n`;
+    message += `\n🎲 Get ready for the draw!`;
+  }
   
   messageQueue.enqueue({
     type: 'announcement',
