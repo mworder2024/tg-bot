@@ -2743,7 +2743,7 @@ async function startBot() {
     await bot.launch();
     
     // Start dashboard server
-    const dashboardPort = parseInt(process.env.DASHBOARD_PORT || '3000');
+    const dashboardPort = parseInt(process.env.PORT || process.env.DASHBOARD_PORT || '3000');
     const dashboardToken = process.env.DASHBOARD_AUTH_TOKEN || 'admin123';
     const dashboard = new DashboardServer(dashboardPort, dashboardToken);
     
