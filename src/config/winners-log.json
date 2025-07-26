@@ -397,5 +397,21 @@
     "prizeAmount": 10885,
     "timestamp": "2025-07-22T23:29:59.987Z",
     "chatId": "-1002330414734"
+  },
+  {
+    "gameId": "496SZF",
+    "userId": "5970380897",
+    "username": "memeworldorder",
+    "prizeAmount": 8407,
+    "timestamp": "2025-07-26T03:58:28.004Z",
+    "chatId": "-1002633946257"
+  },
+  {
+    "gameId": "496SZF",
+    "userId": "1824298261",
+    "username": "sam_web3r",
+    "prizeAmount": 8407,
+    "timestamp": "2025-07-26T03:58:28.005Z",
+    "chatId": "-1002633946257"
   }
 ]

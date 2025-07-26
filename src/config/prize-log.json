@@ -295,5 +295,23 @@
     "timestamp": "2025-07-22T23:21:49.972Z",
     "vrfProof": "342875eee317830616dbd3033870fcc978bea1c10d83c74bf7f9683144e172cc",
     "chatId": "-1002330414734"
+  },
+  {
+    "gameId": "496SZF",
+    "prizeAmount": 16815,
+    "totalSurvivors": 3,
+    "prizePerSurvivor": 5605,
+    "timestamp": "2025-07-26T03:58:18.000Z",
+    "vrfProof": "8f91bf0a15f522bd65dfbec54efe7f73e92d99cc20b709a9f7af2d451e5a0999",
+    "chatId": "-1002633946257"
+  },
+  {
+    "gameId": "URQCCQ",
+    "prizeAmount": 30462,
+    "totalSurvivors": 1,
+    "prizePerSurvivor": 30462,
+    "timestamp": "2025-07-26T06:48:40.667Z",
+    "vrfProof": "ae06c7b552c410e7f440abbd63e76dad152824ca948f3432754b5a0af65d1038",
+    "chatId": "-1002330414734"
   }
 ]

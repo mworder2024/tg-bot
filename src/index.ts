@@ -1,5 +1,8 @@
-import { Telegraf, Context } from 'telegraf';
+// Load environment variables first, before any other imports
 import * as dotenv from 'dotenv';
+dotenv.config();
+
+import { Telegraf, Context } from 'telegraf';
 import * as winston from 'winston';
 import { VRF } from './utils/vrf';
 import * as https from 'https';
@@ -18,6 +21,10 @@ import { eventScheduler, EventScheduler } from './utils/event-scheduler';
 import { adminMenu } from './utils/admin-menu';
 import { gameConfigManager } from './utils/game-config-manager';
 import { DashboardServer, formatGameDataForDashboard } from './dashboard/server';
+import { startDashboard } from './dashboard/start-dashboard';
+import { dashboardAPI } from './dashboard/api-server';
+import { metricsCollector } from './monitoring/prometheus-metrics';
+import { getBotToken } from './config';
 import {
   getRandomBubbleMessage,
   getRandomFinalDrawMessage,
@@ -41,9 +48,6 @@ import {
   handleWinnerStatsCommand
 } from './handlers/command-handlers';
 import { handleHelpCommand } from './commands/help';
-
-// Load environment variables
-dotenv.config();
 
 // Force IPv4 DNS resolution
 dns.setDefaultResultOrder('ipv4first');
@@ -73,8 +77,9 @@ const httpsAgent = new https.Agent({
   scheduling: 'fifo'
 });
 
-// Initialize bot
-const bot = new Telegraf(process.env.BOT_TOKEN!, {
+// Initialize bot with environment-aware token selection
+const botToken = getBotToken();
+const bot = new Telegraf(botToken, {
   handlerTimeout: 90000,
   telegram: {
     apiRoot: 'https://api.telegram.org',
@@ -2277,7 +2282,12 @@ async function createScheduledGame(chatId: string, config: any) {
     startMinutes: config.startMinutes,
     chatId: parseInt(chatId),
     scheduled: true,
-    scheduledStartTime: new Date(Date.now() + config.startMinutes * 60000)
+    scheduledStartTime: new Date(Date.now() + config.startMinutes * 60000),
+    // Special event properties
+    isSpecialEvent: config.isSpecialEvent || false,
+    eventName: config.eventName || 'Scheduled Game',
+    eventPrize: config.eventPrize || 0,
+    eventId: config.eventId || null
   };
   
   // Schedule game with absolute time
@@ -2298,20 +2308,39 @@ async function createScheduledGame(chatId: string, config: any) {
     minute: '2-digit' 
   });
     
-  const announceMessage = 
-    `🎰 **SCHEDULED LOTTERY ANNOUNCED!** 🎰\n\n` +
-    `🎲 Game ID: \`${newGame.gameId}\`\n` +
-    `🤖 Auto-created by scheduler\n` +
-    `⏰ **Starts at ${startTimeStr}** (in ${config.startMinutes} minutes)\n\n` +
-    `📊 **Game Settings:**\n` +
-    `• 👥 Max Players: **${config.maxPlayers}**\n` +
-    `• 🏆 Survivors: **${config.survivors}**\n` +
-    `• 🔢 Number Range: **1-${config.maxPlayers * 2}**\n` +
-    `• 💰 Prize Pool: **10K-20K** (<10 players)\n` +
-    `     35K max (<20), 50K (<30), 70K (<40), 100K (50)\n\n` +
-    `✨ **GAME IS OPEN FOR JOINING NOW!**\n` +
-    `🎯 Join early to secure your spot!\n\n` +
-    `💬 Type /join or click the button below:`;
+  let announceMessage;
+  
+  if (config.isSpecialEvent) {
+    announceMessage = 
+      `🎉 **SPECIAL EVENT ANNOUNCED!** 🎉\n\n` +
+      `🏆 Event: **${config.eventName}**\n` +
+      `💰 Prize Pool: **${config.eventPrize.toLocaleString()} tokens**\n` +
+      `🎲 Game ID: \`${newGame.gameId}\`\n` +
+      `🤖 Auto-created by scheduler\n` +
+      `⏰ **Starts at ${startTimeStr}** (in ${config.startMinutes} minutes)\n\n` +
+      `📊 **Game Settings:**\n` +
+      `• 👥 Max Players: **${config.maxPlayers}**\n` +
+      `• 🏆 Survivors: **${config.survivors}**\n` +
+      `• 🔢 Number Range: **1-${config.maxPlayers * 2}**\n\n` +
+      `✨ **GAME IS OPEN FOR JOINING NOW!**\n` +
+      `🎯 Join early to secure your spot!\n\n` +
+      `💬 Type /join or click the button below:`;
+  } else {
+    announceMessage = 
+      `🎰 **SCHEDULED LOTTERY ANNOUNCED!** 🎰\n\n` +
+      `🎲 Game ID: \`${newGame.gameId}\`\n` +
+      `🤖 Auto-created by scheduler\n` +
+      `⏰ **Starts at ${startTimeStr}** (in ${config.startMinutes} minutes)\n\n` +
+      `📊 **Game Settings:**\n` +
+      `• 👥 Max Players: **${config.maxPlayers}**\n` +
+      `• 🏆 Survivors: **${config.survivors}**\n` +
+      `• 🔢 Number Range: **1-${config.maxPlayers * 2}**\n` +
+      `• 💰 Prize Pool: **10K-20K** (<10 players)\n` +
+      `     35K max (<20), 50K (<30), 70K (<40), 100K (50)\n\n` +
+      `✨ **GAME IS OPEN FOR JOINING NOW!**\n` +
+      `🎯 Join early to secure your spot!\n\n` +
+      `💬 Type /join or click the button below:`;
+  }
   
   const joinKeyboard = {
     inline_keyboard: [
@@ -2521,13 +2550,22 @@ function startEngagementReminders(chatId: string, game: any) {
 
 async function handleRaidSuccess(chatId: string, game: any) {
   try {
+    logger.info(`🎉 Processing raid success for game ${game.gameId} in chat ${chatId}`);
+    
+    // Clear raid state
     game.raidPaused = false;
     game.raidMonitorActive = false;
     
     // Clear reminder interval
     if (game.raidReminderInterval) {
       clearInterval(game.raidReminderInterval);
+      delete game.raidReminderInterval;
+      logger.info('🔇 Cleared raid reminder interval');
     }
+    
+    // Save the updated game state immediately
+    setCurrentGame(chatId, game);
+    logger.info('💾 Saved game state after clearing raid flags');
     
     await messageQueue.enqueue({
       type: 'announcement',
@@ -2535,27 +2573,38 @@ async function handleRaidSuccess(chatId: string, game: any) {
       content: `✅ **RAID SUCCESSFUL!** ✅\n\n` +
         `Great job everyone! 🔥\n\n` +
         `The lottery will resume in 10 seconds...\n` +
-        `Get ready for more eliminations! 💀`,
+        `Get ready for more eliminations! 💀\n\n` +
+        `🎲 Game: \`${game.gameId}\``,
+      options: { parse_mode: 'Markdown' },
       priority: 'critical'
     });
+    
+    logger.info('📢 Raid success announcement queued');
     
     // Resume drawing after 10 seconds
     setTimeout(() => {
       try {
+        logger.info(`⏰ 10 seconds elapsed - attempting to resume drawing for game ${game.gameId}`);
         const currentGame = getCurrentGame(chatId);
         if (currentGame && currentGame.state === 'DRAWING') {
+          logger.info(`▶️ Resuming drawing for game ${currentGame.gameId} after raid success`);
           startDrawing(chatId, currentGame.gameId);
+        } else {
+          logger.warn(`⚠️ Cannot resume drawing - game state: ${currentGame?.state || 'no game'}`);
         }
       } catch (resumeError) {
         logger.error('Failed to resume drawing after raid success:', resumeError);
       }
     }, 10000);
+    
+    logger.info('✅ Raid success handling completed');
   } catch (error) {
     logger.error(`❌ Error in handleRaidSuccess for chat ${chatId}:`, error);
     console.error('Handle raid success error:', error);
     // Try to resume game anyway
     game.raidPaused = false;
     game.raidMonitorActive = false;
+    setCurrentGame(chatId, game);
   }
 }
 
@@ -2636,6 +2685,9 @@ setInterval(() => {
     
     // Check overdue schedules
     gameScheduler.checkOverdueSchedules();
+    
+    // Check overdue scheduled events
+    eventScheduler.checkOverdueEvents();
     
     // Check for scheduled games that can be auto-activated
     gameScheduler.checkAndActivateScheduledGames(getCurrentGame);
@@ -2928,6 +2980,125 @@ bot.command('resumelottery', async (ctx): Promise<any> => {
   }
 });
 
+// Command: /raidstatus - Check current raid status
+bot.command('raidstatus', async (ctx): Promise<any> => {
+  const userId = ctx.from!.id.toString();
+  const chatId = ctx.chat.id.toString();
+  
+  if (!isAdminUser(userId)) {
+    return ctx.reply('❌ Only admins can check raid status.');
+  }
+  
+  if (!(await groupManager.isGroupEnabled(chatId))) {
+    return ctx.reply('❌ This group is not configured.');
+  }
+  
+  const currentGame = getCurrentGame(chatId);
+  if (!currentGame) {
+    return ctx.reply('❌ No active game found.');
+  }
+  
+  const statusInfo = 
+    `🚨 **Raid Status Report** 🚨\n\n` +
+    `🎲 Game ID: \`${currentGame.gameId}\`\n` +
+    `📊 Game State: **${currentGame.state}**\n` +
+    `⚔️ Raid Enabled: **${currentGame.raidEnabled ? 'YES' : 'NO'}**\n` +
+    `⏸️ Raid Paused: **${currentGame.raidPaused ? 'YES' : 'NO'}**\n` +
+    `👁️ Raid Monitor Active: **${currentGame.raidMonitorActive ? 'YES' : 'NO'}**\n` +
+    `📱 Raid Message Count: **${currentGame.raidMessageCount || 0}**\n` +
+    `⏰ Raid Start Time: ${currentGame.raidStartTime ? currentGame.raidStartTime.toLocaleString() : 'Not set'}\n` +
+    `❌ Raid Failure Count: **${currentGame.raidFailureCount || 0}**\n\n`;
+
+  if (currentGame.raidPaused && currentGame.raidMonitorActive) {
+    return ctx.reply(
+      statusInfo +
+      `🔴 **STATUS: WAITING FOR RAID COMPLETION**\n` +
+      `Use /forceresume to manually resume if raid is stuck.`,
+      { parse_mode: 'Markdown' }
+    );
+  } else if (currentGame.raidEnabled && !currentGame.raidPaused) {
+    return ctx.reply(
+      statusInfo +
+      `🟡 **STATUS: RAID ENABLED BUT NOT ACTIVE**`,
+      { parse_mode: 'Markdown' }
+    );
+  } else {
+    return ctx.reply(
+      statusInfo +
+      `🟢 **STATUS: NO RAID ISSUES**`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+});
+
+// Command: /forceresume - Emergency resume from raid mode
+bot.command('forceresume', async (ctx): Promise<any> => {
+  const userId = ctx.from!.id.toString();
+  const chatId = ctx.chat.id.toString();
+  
+  if (!isAdminUser(userId)) {
+    return ctx.reply('❌ Only admins can force resume from raid mode.');
+  }
+  
+  if (!(await groupManager.isGroupEnabled(chatId))) {
+    return ctx.reply('❌ This group is not configured.');
+  }
+  
+  const currentGame = getCurrentGame(chatId);
+  if (!currentGame) {
+    return ctx.reply('❌ No active game found.');
+  }
+  
+  if (!currentGame.raidPaused && !currentGame.raidMonitorActive) {
+    return ctx.reply('❌ Game is not stuck in raid mode.');
+  }
+  
+  // Force clear raid state
+  currentGame.raidPaused = false;
+  currentGame.raidMonitorActive = false;
+  
+  // Clear raid reminder interval
+  if (currentGame.raidReminderInterval) {
+    clearInterval(currentGame.raidReminderInterval);
+    delete currentGame.raidReminderInterval;
+  }
+  
+  // Save the game state
+  setCurrentGame(chatId, currentGame);
+  
+  // Announce forced resume
+  messageQueue.enqueue({
+    type: 'announcement',
+    chatId,
+    content: 
+      `⚠️ **EMERGENCY RAID RESUME** ⚠️\n\n` +
+      `🔓 Admin has manually resumed the lottery!\n` +
+      `🎲 Game ID: \`${currentGame.gameId}\`\n` +
+      `👤 Resumed by: **${ctx.from?.first_name || 'Admin'}**\n\n` +
+      `🎰 **LOTTERY IS NOW ACTIVE AGAIN!**\n` +
+      `Drawing will continue shortly...`,
+    options: { parse_mode: 'Markdown' },
+    priority: 'high'
+  });
+  
+  await ctx.reply(
+    `✅ **Force Resume Successful!**\n\n` +
+    `🎲 Game: \`${currentGame.gameId}\`\n` +
+    `🔓 Raid state cleared\n` +
+    `▶️ Drawing will resume automatically\n\n` +
+    `**Game is now active!**`,
+    { parse_mode: 'Markdown' }
+  );
+  
+  // Continue drawing if game was in DRAWING state
+  if (currentGame.state === 'DRAWING') {
+    setTimeout(() => {
+      logger.info(`🔧 Force resuming drawing for game ${currentGame.gameId} after raid clear`);
+      startDrawing(chatId, currentGame.gameId);
+    }, 2000);
+  }
+});
+
 // Help command
 bot.command('help', async (ctx) => {
   const userId = ctx.from!.id.toString();
@@ -3032,19 +3203,45 @@ bot.on('message', async (ctx) => {
       // Check for raid completion if game is paused and waiting
       if (currentGame && currentGame.raidPaused && currentGame.raidMonitorActive) {
         
-        // Check for success message
-        if (messageText.includes('🎊 Raid Ended - Targets Reached!') || 
-            messageText.includes('🟩 Likes') || 
-            messageText.includes('🔥 Trending')) {
-          logger.info('Raid success detected from raid bot');
+        // Enhanced raid completion detection
+        logger.info(`🔍 Checking raid bot message for completion patterns: "${messageText.substring(0, 100)}..."`);
+        
+        // Check for success patterns (more comprehensive)
+        const successPatterns = [
+          '🎊 Raid Ended - Targets Reached!',
+          '🟩 Likes',
+          '🔥 Trending',
+          'Raid Successful',
+          'RAID SUCCESSFUL',
+          'Targets Reached',
+          'Well done',
+          'Great job'
+        ];
+        
+        const failurePatterns = [
+          '⚠️ Raid Ended - Time limit reached!',
+          '🟥 Likes',
+          'Raid Failed',
+          'RAID FAILED',
+          'Time limit reached',
+          'Not enough',
+          'Failed to reach'
+        ];
+        
+        const isSuccess = successPatterns.some(pattern => messageText.includes(pattern));
+        const isFailure = failurePatterns.some(pattern => messageText.includes(pattern));
+        
+        if (isSuccess) {
+          logger.info('🎉 Raid success detected from raid bot - patterns matched');
           await handleRaidSuccess(chatId, currentGame);
         }
-        // Check for failure message
-        else if (messageText.includes('⚠️ Raid Ended - Time limit reached!') || 
-                 messageText.includes('🟥 Likes')) {
-          logger.info('Raid failure detected from raid bot');
+        else if (isFailure) {
+          logger.info('❌ Raid failure detected from raid bot - patterns matched');  
           const isFirstFailure = !currentGame.raidFailureCount || currentGame.raidFailureCount === 0;
           await handleRaidFailure(chatId, currentGame, isFirstFailure);
+        }
+        else {
+          logger.info('🔍 Raid bot message did not match success/failure patterns - continuing to monitor');
         }
       }
     }
@@ -3097,9 +3294,12 @@ async function startBot() {
     const me = await bot.telegram.getMe();
     logger.info('✅ Bot started:', me.username);
     
+    // Start dashboard with monitoring stack
+    await startDashboard();
+    
     await bot.launch();
     
-    // Start dashboard server
+    // Start legacy dashboard server for backward compatibility
     const dashboardPort = parseInt(process.env.PORT || process.env.DASHBOARD_PORT || '3000');
     const dashboardToken = process.env.DASHBOARD_AUTH_TOKEN || 'admin123';
     const dashboard = new DashboardServer(dashboardPort, dashboardToken);
@@ -3107,14 +3307,35 @@ async function startBot() {
     // Set up game data callback
     dashboard.setGameDataCallback(() => formatGameDataForDashboard(gameStates));
     
-    // Start dashboard
+    // Start legacy dashboard
     dashboard.start();
     
-    // Update dashboard on game state changes
+    // Update both dashboards on game state changes
     const originalSaveGames = gamePersistence.saveGames.bind(gamePersistence);
     gamePersistence.saveGames = async (states: Map<string, any>) => {
       await originalSaveGames(states);
       dashboard.updateGames(formatGameDataForDashboard(states));
+      
+      // Update new dashboard API
+      states.forEach((gameData, gameId) => {
+        dashboardAPI.updateGame(gameId, {
+          gameId,
+          chatId: gameData.chatId,
+          chatName: gameData.chatName,
+          state: gameData.state,
+          players: gameData.players,
+          maxPlayers: gameData.maxPlayers,
+          survivors: gameData.survivors,
+          startTime: gameData.startTime,
+          endTime: gameData.endTime,
+          isSpecialEvent: gameData.isSpecialEvent,
+          eventPrize: gameData.eventPrize,
+          eventName: gameData.eventName,
+          createdBy: gameData.createdBy,
+          winnerCount: gameData.winnerCount,
+          currentPrize: gameData.currentPrize
+        });
+      });
     };
     
     console.log('🎰 Enhanced Lottery Bot Running!');
@@ -3135,5 +3356,14 @@ async function startBot() {
 startBot();
 
 // Enable graceful stop
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+process.once('SIGINT', async () => {
+  logger.info('Received SIGINT, shutting down gracefully...');
+  bot.stop('SIGINT');
+  await dashboardAPI.stop();
+});
+
+process.once('SIGTERM', async () => {
+  logger.info('Received SIGTERM, shutting down gracefully...');
+  bot.stop('SIGTERM');
+  await dashboardAPI.stop();
+});

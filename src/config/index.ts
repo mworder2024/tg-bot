@@ -56,11 +56,11 @@ const env = cleanEnv(process.env, {
     default: 'wss://api.devnet.solana.com',
     desc: 'Solana WebSocket endpoint' 
   }),
-  SOLANA_PROGRAM_ID: str({ desc: 'Deployed lottery program ID' }),
-  SOLANA_TREASURY_PDA: str({ desc: 'Treasury PDA address' }),
-  MWOR_TOKEN_MINT: str({ desc: 'MWOR token mint address' }),
-  VRF_ORACLE_PUBKEY: str({ desc: 'VRF oracle public key' }),
-  BOT_WALLET_KEY: str({ desc: 'Bot wallet private key (base58)' }),
+  SOLANA_PROGRAM_ID: str({ desc: 'Deployed lottery program ID', default: '' }),
+  SOLANA_TREASURY_PDA: str({ desc: 'Treasury PDA address', default: '' }),
+  MWOR_TOKEN_MINT: str({ desc: 'MWOR token mint address', default: '' }),
+  VRF_ORACLE_PUBKEY: str({ desc: 'VRF oracle public key', default: '' }),
+  BOT_WALLET_KEY: str({ desc: 'Bot wallet private key (base58)', default: '' }),
   
   // Security
   WEBHOOK_SECRET: str({ 
@@ -84,7 +84,7 @@ const env = cleanEnv(process.env, {
   }),
   
   // Anthropic API
-  ANTHROPIC_API_KEY: str({ desc: 'Anthropic API key for Claude integration' }),
+  ANTHROPIC_API_KEY: str({ desc: 'Anthropic API key for Claude integration', default: '' }),
   ANTHROPIC_MAX_TOKENS: num({ default: 4000 }),
   ANTHROPIC_MODEL: str({ default: 'claude-3-5-sonnet-20241022' }),
   ANTHROPIC_RATE_LIMIT_PER_MINUTE: num({ default: 50 }),
@@ -102,6 +102,12 @@ const env = cleanEnv(process.env, {
   BOT_INSTANCE_MODE: str({ 
     default: 'primary',
     choices: ['primary', 'secondary'] 
+  }),
+
+  // Dashboard Authentication
+  DASHBOARD_ADMIN_TOKEN: str({ 
+    default: 'admin-token-change-this',
+    desc: 'Admin token for dashboard authentication' 
   }),
   
   // Feature Flags
@@ -213,6 +219,10 @@ export default {
     mode: env.BOT_INSTANCE_MODE,
   },
   
+  dashboard: {
+    adminToken: env.DASHBOARD_ADMIN_TOKEN,
+  },
+
   features: {
     paidGames: env.ENABLE_PAID_GAMES,
     webDashboard: false, // Web dashboard removed
@@ -224,3 +234,6 @@ export default {
   isProduction: env.ENVIRONMENT === 'production',
   isDevelopment: env.ENVIRONMENT === 'development',
 };
+
+// Export utility functions
+export { getBotToken, getRedisUrl };

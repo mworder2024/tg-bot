@@ -143,6 +143,17 @@ export class EventScheduler {
   }
 
   /**
+   * Get all events across all chats
+   */
+  getAllEventsForAllChats(): ScheduledEvent[] {
+    const allEvents: ScheduledEvent[] = [];
+    for (const chatEvents of this.events.values()) {
+      allEvents.push(...chatEvents);
+    }
+    return allEvents.sort((a, b) => a.scheduledTime.getTime() - b.scheduledTime.getTime());
+  }
+
+  /**
    * Get next scheduled event for a chat
    */
   getNextEvent(chatId: string): ScheduledEvent | undefined {
@@ -178,7 +189,8 @@ export class EventScheduler {
   private async executeEvent(event: ScheduledEvent): Promise<void> {
     if (event.executed || event.cancelled) return;
 
-    logger.info(`Executing scheduled event "${event.eventName}" for chat ${event.chatId}`);
+    logger.info(`🎯 Executing scheduled event "${event.eventName}" for chat ${event.chatId}`);
+    logger.info(`🎯 Event details: ${JSON.stringify(event, null, 2)}`);
 
     // Mark as executed
     event.executed = true;
