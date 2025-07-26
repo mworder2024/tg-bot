@@ -245,7 +245,7 @@ const helpTopics: Record<string, HelpTopic> = {
   }
 };
 
-export function handleHelpCommand(ctx: Context, isAdmin: boolean): void {
+export async function handleHelpCommand(ctx: Context, isAdmin: boolean): Promise<void> {
   const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
   const args = text.split(' ').slice(1);
   
@@ -257,7 +257,7 @@ export function handleHelpCommand(ctx: Context, isAdmin: boolean): void {
     if (topic) {
       // Check admin permission
       if (topic.adminOnly && !isAdmin) {
-        ctx.reply('❌ This help topic is for admins only.');
+        await ctx.reply('❌ This help topic is for admins only.');
         return;
       }
       
@@ -283,7 +283,7 @@ export function handleHelpCommand(ctx: Context, isAdmin: boolean): void {
       
       message += `\n➡️ Use \`/help\` to see all available topics`;
       
-      ctx.reply(message, { parse_mode: 'Markdown' });
+      await ctx.reply(message, { parse_mode: 'Markdown' });
       return;
     }
   }
@@ -327,7 +327,7 @@ export function handleHelpCommand(ctx: Context, isAdmin: boolean): void {
   message += '💡 **TIP:** Add topic name after /help for detailed info!\n';
   message += 'Example: `/help --schedule` for scheduling help';
   
-  ctx.reply(message, { parse_mode: 'Markdown' });
+  await ctx.reply(message, { parse_mode: 'Markdown' });
 }
 
 // Answer the user's question about scheduling

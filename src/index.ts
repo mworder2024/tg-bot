@@ -2688,20 +2688,82 @@ bot.on('callback_query', async (ctx): Promise<any> => {
   // Handle other callbacks (status, etc.)
   const [action, gameId] = data.split('_');
   
-  switch (action) {
-    // 'join' case removed - handled by bot.action(/join_(.+)/) above
-    
-    case 'status':
-      const game = getCurrentGame(ctx.chat!.id.toString());
-      if (game) {
-        await ctx.answerCbQuery(`Players: ${game.players.size}/${game.maxPlayers}`);
+  switch (data) {
+    case 'help':
+      const userId = ctx.from!.id.toString();
+      const isAdmin = await isAdminUser(userId);
+      await handleHelpCommand(ctx, isAdmin);
+      await ctx.answerCbQuery();
+      break;
+      
+    case 'leaderboard':
+      await handleLeaderboardCommand(ctx);
+      await ctx.answerCbQuery();
+      break;
+      
+    case 'my_stats':
+      await handleStatsCommand(ctx);
+      await ctx.answerCbQuery();
+      break;
+      
+    case 'user_prize_stats':
+      await handlePrizeStatsCommand(ctx);
+      await ctx.answerCbQuery();
+      break;
+      
+    case 'user_winner_stats':
+      await handleWinnerStatsCommand(ctx);
+      await ctx.answerCbQuery();
+      break;
+      
+    case 'admin_panel':
+      const adminUserId = ctx.from!.id.toString();
+      if (await isAdminUser(adminUserId)) {
+        await ctx.reply(
+          '🔧 **Admin Panel**\n\nSelect an option:',
+          {
+            parse_mode: 'Markdown',
+            reply_markup: adminMenu.getMainMenu()
+          }
+        );
+      }
+      await ctx.answerCbQuery();
+      break;
+      
+    case 'create_game':
+      await ctx.answerCbQuery('Use /create to start a new game');
+      break;
+      
+    case 'join_game':
+      await ctx.answerCbQuery('Use /join to join an active game');
+      break;
+      
+    case 'game_status':
+      const currentGame = getCurrentGame(ctx.chat!.id.toString());
+      if (currentGame) {
+        await ctx.answerCbQuery(`Players: ${currentGame.players.size}/${currentGame.maxPlayers}`);
       } else {
         await ctx.answerCbQuery('No active game');
       }
       break;
       
     default:
-      await ctx.answerCbQuery();
+      // Handle legacy action_gameId format
+      const [action, gameId] = data.split('_');
+      
+      switch (action) {
+        case 'status':
+          const game = getCurrentGame(ctx.chat!.id.toString());
+          if (game) {
+            await ctx.answerCbQuery(`Players: ${game.players.size}/${game.maxPlayers}`);
+          } else {
+            await ctx.answerCbQuery('No active game');
+          }
+          break;
+          
+        default:
+          await ctx.answerCbQuery();
+      }
   }
 });
 
@@ -2867,11 +2929,11 @@ bot.command('resumelottery', async (ctx): Promise<any> => {
 });
 
 // Help command
-bot.command('help', (ctx) => {
+bot.command('help', async (ctx) => {
   const userId = ctx.from!.id.toString();
-  const isAdmin = isAdminUser(userId);
+  const isAdmin = await isAdminUser(userId);
   
-  handleHelpCommand(ctx, isAdmin);
+  await handleHelpCommand(ctx, isAdmin);
 });
 
 // Command: /start
