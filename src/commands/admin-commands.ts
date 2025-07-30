@@ -86,12 +86,18 @@ export async function handleActiveGamesCommand(ctx: Context): Promise<void> {
   }
 
   try {
+    const chatId = ctx.chat?.id.toString();
+    if (!chatId) {
+      await ctx.reply('❌ Unable to determine chat ID.');
+      return;
+    }
+
     // Import game state from main module
     const { getActiveGames } = await import('../index.js');
-    const activeGames = getActiveGames();
+    const activeGames = getActiveGames(chatId);
 
     if (activeGames.length === 0) {
-      await ctx.reply('📊 **Active Games**\n\n❌ No active games currently running.');
+      await ctx.reply('📊 **Active Games**\n\n❌ No active games currently running in this chat.');
       return;
     }
 
@@ -190,12 +196,8 @@ export async function handleScheduleEventCommand(ctx: Context): Promise<void> {
       { parse_mode: 'Markdown' }
     );
 
-    // Notify about the scheduled event
-    await notificationManager.queueNotification({
-      chatId,
-      content: `🌟 **Special Event Scheduled!**\n\n"${name}" with ${prize.toLocaleString()} tokens prize pool!`,
-      priority: 'high'
-    });
+    // Additional notification can be sent via bot if needed
+    logger.info(`Special event "${name}" scheduled for chat ${chatId} with prize ${prize}`);
   } catch (error: any) {
     await ctx.reply(`❌ Error: ${error.message}`);
   }

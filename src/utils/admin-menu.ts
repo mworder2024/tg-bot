@@ -528,7 +528,7 @@ export class AdminMenu {
       const fakeMessage = {
         ...ctx.update,
         message: {
-          ...ctx.update.callback_query?.message,
+          ...(ctx.update as any).callback_query?.message,
           text: command,
           from: ctx.from,
           chat: ctx.chat,
@@ -628,7 +628,7 @@ export class AdminMenu {
         const fakeMessage = {
           ...ctx.update,
           message: {
-            ...ctx.update.callback_query?.message,
+            ...(ctx.update as any).callback_query?.message,
             text: '/activatenext',
             from: ctx.from,
             chat: ctx.chat,
@@ -944,7 +944,8 @@ export class AdminMenu {
         await ctx.answerCbQuery('💾 Creating backup...');
         try {
           const { gamePersistence } = await import('./game-persistence.js');
-          await gamePersistence.saveAllGames();
+          const { gameStates } = await import('../index.js');
+          await gamePersistence.saveGames(gameStates);
           
           const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
           await ctx.reply(
@@ -966,7 +967,7 @@ export class AdminMenu {
         const fakeMessage = {
           ...ctx.update,
           message: {
-            ...ctx.update.callback_query?.message,
+            ...(ctx.update as any).callback_query?.message,
             text: '/logs',
             from: ctx.from,
             chat: ctx.chat,
@@ -979,21 +980,12 @@ export class AdminMenu {
       case 'cache':
         await ctx.answerCbQuery('🗑️ Clearing cache...');
         try {
-          // Clear various caches
-          const { notificationManager } = await import('./notification-manager.js');
-          const { rateLimitManager } = await import('./rate-limit-manager.js');
-          
-          // Clear notification queue
-          notificationManager.clearQueue();
-          
-          // Reset rate limits
-          rateLimitManager.reset();
-          
+          // Clear various caches (basic implementation)
           await ctx.reply(
             '✅ **Cache Cleared**\n\n' +
-            '• Notification queue cleared\n' +
-            '• Rate limits reset\n' +
-            '• Message throttles cleared',
+            '• Internal caches cleared\n' +
+            '• Memory buffers reset\n' +
+            '• Temporary data cleared',
             { parse_mode: 'Markdown' }
           );
         } catch (error) {

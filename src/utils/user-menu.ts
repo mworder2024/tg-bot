@@ -455,7 +455,7 @@ export class UserMenu {
     const fakeMessage = {
       ...ctx.update,
       message: {
-        ...ctx.update.callback_query?.message,
+        ...(ctx.update as any).callback_query?.message,
         text: command,
         from: ctx.from,
         chat: ctx.chat,

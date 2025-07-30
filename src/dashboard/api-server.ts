@@ -296,7 +296,7 @@ export class DashboardAPI {
         const schedules = gameScheduler.getAllSchedules();
         
         // Get all scheduled events from the event scheduler
-        const allEvents = eventScheduler.getAllEventsForAllChats();
+        const allEvents = eventScheduler.getAllScheduledEvents();
 
         res.json({
           recurringSchedules: schedules,
@@ -309,26 +309,19 @@ export class DashboardAPI {
     });
 
     // Create scheduled event
-    this.app.post('/api/admin/schedules/events', (req, res) => {
+    this.app.post('/api/admin/schedules/events', async (req, res) => {
       try {
         const { chatId, scheduledTime, eventName, eventPrize, maxPlayers, survivors } = req.body;
         
-        const result = eventScheduler.scheduleEvent(
+        const result = await eventScheduler.scheduleEvent({
           chatId,
-          new Date(scheduledTime),
+          time: scheduledTime,
+          prizeAmount: eventPrize,
           eventName,
-          eventPrize,
-          maxPlayers || 50,
-          survivors || 3,
-          5, // start minutes
-          'dashboard-admin'
-        );
+          createdBy: 'dashboard-admin'
+        });
 
-        if ('error' in result) {
-          return res.status(400).json({ error: result.error });
-        }
-
-        res.json({ success: true, event: result });
+        res.json({ success: true, eventId: result });
         
         // Emit to WebSocket clients
         this.io.emit('eventScheduled', result);
@@ -340,11 +333,11 @@ export class DashboardAPI {
     });
 
     // Cancel scheduled event
-    this.app.delete('/api/admin/schedules/events/:eventId', (req, res) => {
+    this.app.delete('/api/admin/schedules/events/:eventId', async (req, res) => {
       try {
         const { eventId } = req.params;
         
-        const success = eventScheduler.cancelEvent(eventId);
+        const success = await eventScheduler.cancelEvent(eventId, req.query.chatId as string || '');
         
         if (success) {
           res.json({ success: true, message: 'Event cancelled successfully' });

@@ -58,7 +58,7 @@ export const logger = winston.createLogger({
 // Game states
 // Load games into the new multi-game structure
 const loadedGames = gamePersistence.loadGamesSync();
-const gameStates = loadedGames; // Keep for compatibility
+export const gameStates = loadedGames; // Keep for compatibility
 
 // Create HTTPS agent
 const httpsAgent = new https.Agent({
@@ -2669,15 +2669,15 @@ bot.command('listgroups', async (ctx): Promise<any> => {
 });
 
 // Help command with nested command structure
-bot.command('help', (ctx) => {
+bot.command('help', async (ctx) => {
   const userId = ctx.from!.id.toString();
-  const isAdmin = isAdminUser(userId);
+  const isAdmin = await isAdminUser(userId);
   const args = ctx.message && 'text' in ctx.message ? ctx.message.text.split(' ') : [];
   const topic = args[1]; // /help [topic]
   
   // Handle specific help topics
   if (topic) {
-    return handleHelpTopic(ctx, topic, isAdmin);
+    return await handleHelpTopic(ctx, topic, isAdmin);
   }
   
   let message = '🎲 **SURVIVAL LOTTERY BOT HELP**\n\n';
