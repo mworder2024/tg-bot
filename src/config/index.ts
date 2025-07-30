@@ -25,13 +25,13 @@ const env = cleanEnv(process.env, {
   
   // Redis
   REDIS_URL: str({ 
-    default: 'redis://localhost:6379',
+    default: '',
     desc: 'Redis connection string' 
   }),
   REDIS_URL_DEV: str({ 
     desc: 'Redis connection string for development', 
-    default: 'redis://localhost:6379',
-    devDefault: 'redis://localhost:6379' 
+    default: '',
+    devDefault: '' 
   }),
   
   // API Server (optional - web/API removed)

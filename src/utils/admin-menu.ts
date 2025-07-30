@@ -23,15 +23,19 @@ export class AdminMenu {
     return {
       inline_keyboard: [
         [
-          { text: '📅 Schedule Management', callback_data: 'admin:schedule' },
-          { text: '⚡ Game Speed', callback_data: 'admin:speed' }
+          { text: '🎮 Game Control', callback_data: 'admin:gamecontrol' },
+          { text: '📅 Schedule Games', callback_data: 'admin:schedule' }
         ],
         [
-          { text: '👥 Group Management', callback_data: 'admin:groups' },
+          { text: '👑 Admin Management', callback_data: 'admin:adminmgmt' },
           { text: '📊 Statistics', callback_data: 'admin:stats' }
         ],
         [
-          { text: '🎮 Game Settings', callback_data: 'admin:game_settings' },
+          { text: '⚡ Game Speed', callback_data: 'admin:speed' },
+          { text: '🎮 Game Settings', callback_data: 'admin:game_settings' }
+        ],
+        [
+          { text: '👥 Group Management', callback_data: 'admin:groups' },
           { text: '🔧 System', callback_data: 'admin:system' }
         ],
         [
@@ -39,6 +43,88 @@ export class AdminMenu {
         ]
       ]
     };
+  }
+
+  /**
+   * Get game control menu
+   */
+  getGameControlMenu(currentGame: any): { text: string; keyboard: InlineKeyboardMarkup } {
+    let text = '🎮 **Game Control**\n\n';
+    
+    if (currentGame) {
+      text += `Current Game Status: **${currentGame.state}**\n`;
+      text += `Players: ${currentGame.players.length}/${currentGame.maxPlayers}\n`;
+      text += `Phase: ${currentGame.phase || 'N/A'}\n\n`;
+    } else {
+      text += '❌ No active game in this chat\n\n';
+    }
+    
+    text += 'Select an action:';
+
+    const keyboard: InlineKeyboardMarkup = {
+      inline_keyboard: []
+    };
+
+    if (currentGame) {
+      if (currentGame.state === 'WAITING') {
+        keyboard.inline_keyboard.push([
+          { text: '▶️ Force Start', callback_data: 'admin:gamecontrol:forcestart' },
+          { text: '✅ Approve Game', callback_data: 'admin:gamecontrol:approve' }
+        ]);
+      }
+      
+      if (currentGame.state === 'ACTIVE') {
+        keyboard.inline_keyboard.push([
+          { text: '⏸️ Pause Lottery', callback_data: 'admin:gamecontrol:pauselottery' },
+          { text: '🔄 Resume Draw', callback_data: 'admin:gamecontrol:resumedraw' }
+        ]);
+      }
+      
+      if (currentGame.state === 'PAUSED') {
+        keyboard.inline_keyboard.push([
+          { text: '▶️ Resume Lottery', callback_data: 'admin:gamecontrol:resumelottery' }
+        ]);
+      }
+      
+      keyboard.inline_keyboard.push([
+        { text: '🔚 End Game', callback_data: 'admin:gamecontrol:endgame' }
+      ]);
+    }
+    
+    keyboard.inline_keyboard.push([
+      { text: '🔄 Refresh', callback_data: 'admin:gamecontrol:refresh' },
+      { text: '🔙 Back', callback_data: 'admin:main' }
+    ]);
+
+    return { text, keyboard };
+  }
+
+  /**
+   * Get admin management menu
+   */
+  getAdminManagementMenu(): { text: string; keyboard: InlineKeyboardMarkup } {
+    const text = '👑 **Admin Management**\n\n' +
+      'Manage bot administrators:\n\n' +
+      '• Add or remove admin privileges\n' +
+      '• View current admin list\n' +
+      '• Configure permissions';
+
+    const keyboard: InlineKeyboardMarkup = {
+      inline_keyboard: [
+        [
+          { text: '➕ Add Admin', callback_data: 'admin:adminmgmt:add' },
+          { text: '➖ Delete Admin', callback_data: 'admin:adminmgmt:delete' }
+        ],
+        [
+          { text: '📝 View Admins', callback_data: 'admin:adminmgmt:list' }
+        ],
+        [
+          { text: '🔙 Back', callback_data: 'admin:main' }
+        ]
+      ]
+    };
+
+    return { text, keyboard };
   }
 
   /**
@@ -74,7 +160,13 @@ export class AdminMenu {
     }
 
     keyboard.inline_keyboard.push([
-      { text: '➕ Create New Schedule', callback_data: 'admin:schedule:new' }
+      { text: '➕ Create New Schedule', callback_data: 'admin:schedule:new' },
+      { text: '🎯 Activate Next', callback_data: 'admin:schedule:activatenext' }
+    ]);
+    
+    keyboard.inline_keyboard.push([
+      { text: '🌟 Schedule Event', callback_data: 'admin:schedule:event' },
+      { text: '❌ Cancel Event', callback_data: 'admin:schedule:cancelevent' }
     ]);
 
     keyboard.inline_keyboard.push([
@@ -151,6 +243,10 @@ export class AdminMenu {
 
     const keyboard: InlineKeyboardMarkup = {
       inline_keyboard: [
+        [
+          { text: '➕ Add Group', callback_data: 'admin:groups:add' },
+          { text: '➖ Remove Group', callback_data: 'admin:groups:remove' }
+        ],
         [
           { text: '📝 List All Groups', callback_data: 'admin:groups:list' }
         ],
@@ -283,6 +379,34 @@ export class AdminMenu {
         });
         break;
 
+      case 'gamecontrol':
+        if (!action) {
+          const chatId = ctx.chat?.id.toString() || '';
+          // Import getCurrentGame from main module
+          const { getCurrentGame } = await import('../index.js');
+          const currentGame = getCurrentGame(chatId);
+          const { text, keyboard } = this.getGameControlMenu(currentGame);
+          await ctx.editMessageText(text, {
+            parse_mode: 'Markdown',
+            reply_markup: keyboard
+          });
+        } else {
+          await this.handleGameControlAction(ctx, action);
+        }
+        break;
+
+      case 'adminmgmt':
+        if (!action) {
+          const { text, keyboard } = this.getAdminManagementMenu();
+          await ctx.editMessageText(text, {
+            parse_mode: 'Markdown',
+            reply_markup: keyboard
+          });
+        } else {
+          await this.handleAdminManagementAction(ctx, action);
+        }
+        break;
+
       case 'schedule':
         if (!action) {
           const chatId = ctx.chat?.id.toString() || '';
@@ -371,6 +495,98 @@ export class AdminMenu {
   }
 
   /**
+   * Handle game control actions
+   */
+  private async handleGameControlAction(ctx: Context, action: string): Promise<void> {
+    const commands: Record<string, string> = {
+      'forcestart': '/forcestart',
+      'approve': '/approve',
+      'pause': '/pauselottery',
+      'resume': '/resumelottery',
+      'endgame': '/endgame',
+      'resumedraw': '/resumedraw'
+    };
+
+    if (action === 'refresh') {
+      // Refresh the menu
+      const chatId = ctx.chat?.id.toString() || '';
+      const { getCurrentGame } = await import('../index.js');
+      const currentGame = getCurrentGame(chatId);
+      const { text, keyboard } = this.getGameControlMenu(currentGame);
+      await ctx.editMessageText(text, {
+        parse_mode: 'Markdown',
+        reply_markup: keyboard
+      });
+      await ctx.answerCbQuery('🔄 Refreshed');
+      return;
+    }
+
+    const command = commands[action];
+    if (command) {
+      await ctx.answerCbQuery();
+      // Trigger the command
+      const fakeMessage = {
+        ...ctx.update,
+        message: {
+          ...ctx.update.callback_query?.message,
+          text: command,
+          from: ctx.from,
+          chat: ctx.chat,
+          date: Date.now()
+        }
+      };
+      // @ts-ignore
+      await ctx.tg.handleUpdate(fakeMessage);
+    }
+  }
+
+  /**
+   * Handle admin management actions
+   */
+  private async handleAdminManagementAction(ctx: Context, action: string): Promise<void> {
+    switch (action) {
+      case 'add':
+        await ctx.answerCbQuery();
+        await ctx.reply(
+          '➕ **Add Admin**\n\n' +
+          'To add an admin, reply to any message from the user with:\n' +
+          '`/addadmin`\n\n' +
+          'The user will receive full admin privileges.',
+          { parse_mode: 'Markdown' }
+        );
+        break;
+        
+      case 'remove':
+        await ctx.answerCbQuery();
+        await ctx.reply(
+          '➖ **Remove Admin**\n\n' +
+          'To remove an admin, reply to any message from the user with:\n' +
+          '`/deleteadmin`\n\n' +
+          'The user will lose all admin privileges.',
+          { parse_mode: 'Markdown' }
+        );
+        break;
+        
+      case 'list':
+        await ctx.answerCbQuery('Loading admin list...');
+        const { groupManager } = await import('./group-manager.js');
+        const admins = await groupManager.getAdmins();
+        
+        let message = '📝 **Admin List**\n\n';
+        if (admins.length > 0) {
+          admins.forEach((adminId: string, index: number) => {
+            message += `${index + 1}. User ID: \`${adminId}\`\n`;
+          });
+        } else {
+          message += 'No admins configured.';
+        }
+        
+        await ctx.reply(message, { parse_mode: 'Markdown' });
+        break;
+    }
+  }
+
+  /**
    * Handle schedule actions
    */
   private async handleScheduleAction(ctx: Context, action: string): Promise<void> {
@@ -402,6 +618,38 @@ export class AdminMenu {
           '• `/schedule 4h 3` - Every 4 hours, 3 survivors\n' +
           '• `/schedule 30m 1 --max 20` - Every 30 min, max 20 players\n' +
           '• `/schedule 2h 5 --start 10` - Every 2 hours, 10 min start delay',
+          { parse_mode: 'Markdown' }
+        );
+        return;
+        
+      case 'activatenext':
+        await ctx.answerCbQuery();
+        // Trigger the activatenext command
+        const fakeMessage = {
+          ...ctx.update,
+          message: {
+            ...ctx.update.callback_query?.message,
+            text: '/activatenext',
+            from: ctx.from,
+            chat: ctx.chat,
+            date: Date.now()
+          }
+        };
+        // @ts-ignore
+        await ctx.tg.handleUpdate(fakeMessage);
+        return;
+        
+      case 'event':
+        await ctx.answerCbQuery();
+        await ctx.reply(
+          '🌟 **Schedule One-Time Event**\n\n' +
+          'Create a special event lottery:\n\n' +
+          '`/scheduleevent <time> <prize> "<name>"`\n\n' +
+          'Examples:\n' +
+          '• `/scheduleevent 12h 100000 "Mega Weekend"` - In 12 hours\n' +
+          '• `/scheduleevent 2d 200000 "Special Event"` - In 2 days\n' +
+          '• `/scheduleevent 20:00 75000 "Evening Draw"` - Today at 8 PM\n\n' +
+          'Note: This command is not yet implemented.',
           { parse_mode: 'Markdown' }
         );
         return;
@@ -683,17 +931,74 @@ export class AdminMenu {
   private async handleSystemAction(ctx: Context, action: string): Promise<void> {
     switch (action) {
       case 'restart':
-        await ctx.answerCbQuery('⚠️ Use /restart command to confirm');
+        await ctx.answerCbQuery();
+        await ctx.reply(
+          '🔄 **Bot Restart**\n\n' +
+          '⚠️ Are you sure you want to restart the bot?\n' +
+          'All active games will be preserved.\n\n' +
+          'Type `/restart confirm` to proceed.',
+          { parse_mode: 'Markdown' }
+        );
         break;
       case 'backup':
         await ctx.answerCbQuery('💾 Creating backup...');
-        // Implement backup logic
+        try {
+          const { gamePersistence } = await import('./game-persistence.js');
+          await gamePersistence.saveAllGames();
+          
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          await ctx.reply(
+            '✅ **Backup Complete**\n\n' +
+            `Data saved to:\n` +
+            `• \`data/games.json\`\n` +
+            `• \`data/player_stats.json\`\n` +
+            `• \`data/game_history.json\`\n\n` +
+            `Timestamp: ${timestamp}`,
+            { parse_mode: 'Markdown' }
+          );
+        } catch (error) {
+          await ctx.reply('❌ Error creating backup. Check logs for details.');
+        }
         break;
       case 'logs':
-        await ctx.answerCbQuery('📝 Use /logs command to view');
+        await ctx.answerCbQuery();
+        // Trigger the logs command
+        const fakeMessage = {
+          ...ctx.update,
+          message: {
+            ...ctx.update.callback_query?.message,
+            text: '/logs',
+            from: ctx.from,
+            chat: ctx.chat,
+            date: Date.now()
+          }
+        };
+        // @ts-ignore
+        await ctx.tg.handleUpdate(fakeMessage);
         break;
       case 'cache':
-        await ctx.answerCbQuery('🗑️ Cache cleared');
+        await ctx.answerCbQuery('🗑️ Clearing cache...');
+        try {
+          // Clear various caches
+          const { notificationManager } = await import('./notification-manager.js');
+          const { rateLimitManager } = await import('./rate-limit-manager.js');
+          
+          // Clear notification queue
+          notificationManager.clearQueue();
+          
+          // Reset rate limits
+          rateLimitManager.reset();
+          
+          await ctx.reply(
+            '✅ **Cache Cleared**\n\n' +
+            '• Notification queue cleared\n' +
+            '• Rate limits reset\n' +
+            '• Message throttles cleared',
+            { parse_mode: 'Markdown' }
+          );
+        } catch (error) {
+          await ctx.reply('❌ Error clearing cache.');
+        }
         break;
     }
   }

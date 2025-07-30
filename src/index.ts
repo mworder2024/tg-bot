@@ -1,8 +1,5 @@
-// Load environment variables first, before any other imports
-import * as dotenv from 'dotenv';
-dotenv.config();
-
 import { Telegraf, Context } from 'telegraf';
+import * as dotenv from 'dotenv';
 import * as winston from 'winston';
 import { VRF } from './utils/vrf';
 import * as https from 'https';
@@ -17,14 +14,8 @@ import { gameTimerManager } from './utils/game-timer-manager';
 import { MessageQueueManager } from './utils/message-queue-manager';
 import { gameSpeedManager } from './utils/game-speed-manager';
 import { gameScheduler, GameScheduler } from './utils/game-scheduler';
-import { eventScheduler, EventScheduler } from './utils/event-scheduler';
 import { adminMenu } from './utils/admin-menu';
 import { gameConfigManager } from './utils/game-config-manager';
-import { DashboardServer, formatGameDataForDashboard } from './dashboard/server';
-import { startDashboard } from './dashboard/start-dashboard';
-import { dashboardAPI } from './dashboard/api-server';
-import { metricsCollector } from './monitoring/prometheus-metrics';
-import { getBotToken } from './config';
 import {
   getRandomBubbleMessage,
   getRandomFinalDrawMessage,
@@ -47,7 +38,9 @@ import {
   handlePrizeStatsCommand,
   handleWinnerStatsCommand
 } from './handlers/command-handlers';
-import { handleHelpCommand } from './commands/help';
+
+// Load environment variables
+dotenv.config();
 
 // Force IPv4 DNS resolution
 dns.setDefaultResultOrder('ipv4first');
@@ -77,9 +70,8 @@ const httpsAgent = new https.Agent({
   scheduling: 'fifo'
 });
 
-// Initialize bot with environment-aware token selection
-const botToken = getBotToken();
-const bot = new Telegraf(botToken, {
+// Initialize bot
+const bot = new Telegraf(process.env.BOT_TOKEN!, {
   handlerTimeout: 90000,
   telegram: {
     apiRoot: 'https://api.telegram.org',
@@ -94,11 +86,6 @@ const messageQueue = new MessageQueueManager(bot);
 
 // Initialize game scheduler
 gameScheduler.setGameCreateCallback((chatId: string, config: any) => {
-  createScheduledGame(chatId, config);
-});
-
-// Initialize event scheduler
-eventScheduler.setEventCreateCallback((chatId: string, config: any) => {
   createScheduledGame(chatId, config);
 });
 
@@ -147,16 +134,6 @@ function addGame(chatId: string, game: any): void {
 
 function removeGame(chatId: string, gameId: string): void {
   const games = getGamesForChat(chatId);
-  const game = games.get(gameId);
-  
-  if (game) {
-    // Clean up any associated timers
-    gameTimerManager.cancelGame(gameId);
-    
-    // Clear any game-related messages from queue
-    messageQueue.clearGameMessages(chatId, 'CANCELLED');
-  }
-  
   games.delete(gameId);
   
   // Clean up empty chat entries
@@ -194,37 +171,18 @@ if (defaultAdminId && defaultChatId) {
 }
 
 // Auto-save interval
-const autoSaveInterval = gamePersistence.startAutoSave(gameStates, 10000);
+// Auto-save disabled to prevent save loops
+// const autoSaveInterval = gamePersistence.startAutoSave(gameStates, 10000);
 
 // Cleanup on exit
 process.on('SIGINT', () => {
   console.log('🔄 Saving games before exit...');
   gamePersistence.saveGames(gameStates);
-  clearInterval(autoSaveInterval);
+  // clearInterval(autoSaveInterval);
   gameTimerManager.destroy();
   messageQueue.destroy();
   gameScheduler.destroy();
   process.exit(0);
-});
-
-// Handle uncaught exceptions
-process.on('uncaughtException', (error) => {
-  logger.error('❌ Uncaught Exception:', error);
-  console.error('FATAL ERROR:', error);
-  // Try to save game state before crashing
-  try {
-    gamePersistence.saveGamesSync(gameStates);
-  } catch (saveError) {
-    logger.error('Failed to save games during crash:', saveError);
-  }
-  process.exit(1);
-});
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (reason, promise) => {
-  logger.error('❌ Unhandled Promise Rejection:', reason);
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  // Don't exit on unhandled rejection, but log it
 });
 
 // Command: /create
@@ -657,15 +615,15 @@ async function startGame(chatId: string, gameId?: string) {
   
   // Start drawing after delay
   setTimeout(() => {
-    const game = getGameById(chatId, currentGame.gameId);
+    const game = getCurrentGame(chatId);
     if (game && game.state === 'DRAWING') {
-      startDrawing(chatId, currentGame.gameId);
+      startDrawing(chatId);
     }
   }, 10000);
   
   // Send a summary after 5 seconds with full player count
   setTimeout(() => {
-    const game = getGameById(chatId, currentGame.gameId);
+    const game = getCurrentGame(chatId);
     if (game && game.state === 'DRAWING') {
       let summaryMessage = `📢 **Game ${currentGame.gameId} is NOW IN PROGRESS!**\n\n`;
       summaryMessage += `🎮 **${playerCount} players** are competing!\n`;
@@ -686,20 +644,13 @@ async function startGame(chatId: string, gameId?: string) {
 }
 
 // Drawing function with dynamic speed
-async function startDrawing(chatId: string, gameId?: string) {
-  try {
-    logger.info(`startDrawing called for chat ${chatId}, gameId: ${gameId || 'default'}`);
-    let currentGame;
-    if (gameId) {
-      currentGame = getGameById(chatId, gameId);
-    } else {
-      // Legacy support
-      currentGame = getCurrentGame(chatId);
-    }
-    if (!currentGame || currentGame.state !== 'DRAWING') {
-      logger.warn(`Cannot start drawing: game state is ${currentGame?.state || 'null'}`);
-      return;
-    }
+async function startDrawing(chatId: string) {
+  logger.info(`startDrawing called for chat ${chatId}`);
+  const currentGame = getCurrentGame(chatId);
+  if (!currentGame || currentGame.state !== 'DRAWING') {
+    logger.warn(`Cannot start drawing: game state is ${currentGame?.state || 'null'}`);
+    return;
+  }
   
   let availableNumbers: number[] = [];
   for (let i = currentGame.numberRange.min; i <= currentGame.numberRange.max; i++) {
@@ -715,12 +666,11 @@ async function startDrawing(chatId: string, gameId?: string) {
   
   // Drawing loop
   async function performDraw() {
-    try {
-      // Check if game should end
-      if (activePlayers.size <= currentGame.winnerCount || availableNumbers.length === 0) {
-        await finishGame(chatId, activePlayers as Set<string>);
-        return;
-      }
+    // Check if game should end
+    if (activePlayers.size <= currentGame.winnerCount || availableNumbers.length === 0) {
+      await finishGame(chatId, activePlayers as Set<string>);
+      return;
+    }
     
     // Check for raid pause
     if (currentGame.raidEnabled && !currentGame.raidPaused) {
@@ -999,44 +949,19 @@ async function startDrawing(chatId: string, gameId?: string) {
       // Schedule next draw
       setTimeout(performDraw, delay);
     }
-    } catch (error) {
-      logger.error(`❌ Error in performDraw:`, error);
-      console.error('Draw error details:', error);
-      // Try to continue the game after a delay
-      setTimeout(() => {
-        logger.info('Attempting to resume drawing after error...');
-        performDraw();
-      }, 5000);
-    }
   }
   
   // Start first draw
   performDraw();
-  } catch (error) {
-    logger.error(`❌ Error in startDrawing for chat ${chatId}:`, error);
-    // Try to save game state
-    try {
-      const game = getCurrentGame(chatId);
-      if (game) {
-        game.state = 'PAUSED';
-        game.pausedAt = new Date();
-        game.pausedReason = `Error: ${error.message || 'Unknown error'}`;
-        gamePersistence.saveGames(gameStates);
-      }
-    } catch (saveError) {
-      logger.error('Failed to save game state after error:', saveError);
-    }
-  }
 }
 
 // Finish game
 async function finishGame(chatId: string, activePlayers: Set<string>) {
-  try {
-    const currentGame = getCurrentGame(chatId);
-    if (!currentGame) return;
-    
-    currentGame.state = 'FINISHED';
-    currentGame.endedAt = new Date();
+  const currentGame = getCurrentGame(chatId);
+  if (!currentGame) return;
+  
+  currentGame.state = 'FINISHED';
+  currentGame.endedAt = new Date();
   
   // Clear any game-related messages from queue
   messageQueue.clearGameMessages(chatId, 'FINISHED');
@@ -1131,37 +1056,6 @@ async function finishGame(chatId: string, activePlayers: Set<string>) {
     options: { parse_mode: 'Markdown' },
     priority: 'critical'
   });
-  
-  // Save game state after completion
-  await gamePersistence.saveGames(gameStates);
-  
-  } catch (error) {
-    logger.error(`❌ Error in finishGame for chat ${chatId}:`, error);
-    console.error('Finish game error details:', error);
-    
-    // Try to save the game state even if there was an error
-    try {
-      const game = getCurrentGame(chatId);
-      if (game) {
-        game.state = 'FINISHED';
-        game.endedAt = new Date();
-        game.error = error.message || 'Unknown error during game completion';
-      }
-      await gamePersistence.saveGames(gameStates);
-    } catch (saveError) {
-      logger.error('Failed to save game state after finish error:', saveError);
-    }
-    
-    // Notify players about the error
-    try {
-      await bot.telegram.sendMessage(chatId, 
-        `⚠️ Game ended with an error. Winners may not have been properly recorded. Please contact admin.`,
-        { parse_mode: 'Markdown' }
-      );
-    } catch (notifyError) {
-      logger.error('Failed to notify players about finish error:', notifyError);
-    }
-  }
 }
 
 // Command: /status
@@ -1271,7 +1165,7 @@ bot.command('approve', async (ctx): Promise<any> => {
     currentGame.gameId,
     chatId,
     currentGame.startMinutes,
-    () => startGame(chatId, currentGame.gameId)
+    () => startGame(chatId)
   );
   
   currentGame.scheduledStartTime = newStartTime;
@@ -1317,22 +1211,22 @@ bot.action(/join_(.+)/, async (ctx) => {
     // Ignore callback query errors
   }
   
-  const game = getGameById(chatId, gameId);
+  const currentGame = getCurrentGame(chatId);
   
-  if (!game || game.state !== 'WAITING') {
+  if (!currentGame || currentGame.gameId !== gameId || currentGame.state !== 'WAITING') {
     return ctx.answerCbQuery('This game is no longer accepting players.', { show_alert: true }).catch(() => {});
   }
   
-  if (game.players.has(userId)) {
+  if (currentGame.players.has(userId)) {
     return ctx.answerCbQuery('You are already in this game!', { show_alert: true }).catch(() => {});
   }
   
-  if (game.players.size >= game.maxPlayers) {
+  if (currentGame.players.size >= currentGame.maxPlayers) {
     return ctx.answerCbQuery('Game is full!', { show_alert: true }).catch(() => {});
   }
   
   // Add player
-  game.players.set(userId, {
+  currentGame.players.set(userId, {
     id: userId,
     username,
     joinedAt: new Date()
@@ -1346,7 +1240,7 @@ bot.action(/join_(.+)/, async (ctx) => {
   messageQueue.enqueue({
     type: 'game',
     chatId,
-    content: `👤 **${escapeUsername(username)}** joined! ${game.players.size}/${game.maxPlayers}`,
+    content: `👤 **${escapeUsername(username)}** joined! ${currentGame.players.size}/${currentGame.maxPlayers}`,
     options: { parse_mode: 'Markdown' },
     priority: 'normal'
   });
@@ -1362,14 +1256,14 @@ bot.action(/status_(.+)/, async (ctx) => {
     // Ignore callback query errors
   }
   
-  const game = getGameById(chatId, gameId);
+  const currentGame = getCurrentGame(chatId);
   
-  if (!game) {
+  if (!currentGame || currentGame.gameId !== gameId) {
     return ctx.answerCbQuery('Game not found.', { show_alert: false }).catch(() => {});
   }
   
-  const timeUntil = gameTimerManager.getFormattedTimeUntil(game.gameId);
-  const message = `Players: ${game.players.size}/${game.maxPlayers}\nStarts in: ${timeUntil}`;
+  const timeUntil = gameTimerManager.getFormattedTimeUntil(currentGame.gameId);
+  const message = `Players: ${currentGame.players.size}/${currentGame.maxPlayers}\nStarts in: ${timeUntil}`;
   
   return ctx.answerCbQuery(message, { show_alert: true }).catch(() => {});
 });
@@ -1446,7 +1340,7 @@ bot.command('resumedraw', async (ctx): Promise<any> => {
     }
     
     // Force the drawing to start
-    startDrawing(chatId, currentGame.gameId);
+    startDrawing(chatId);
   }, 3000);
 });
 
@@ -1670,198 +1564,6 @@ bot.command('schedule', async (ctx): Promise<any> => {
   );
 });
 
-// Command: /scheduleevent (admin) - Schedule a one-time event lottery
-bot.command('scheduleevent', async (ctx): Promise<any> => {
-  const userId = ctx.from!.id.toString();
-  const chatId = ctx.chat.id.toString();
-  
-  if (!isAdminUser(userId)) {
-    return ctx.reply('❌ Admin only command.');
-  }
-  
-  const commandText = ctx.message?.text || '';
-  const args = commandText.split(' ').slice(1);
-  
-  // Show help if no args
-  if (args.length === 0) {
-    return ctx.reply(
-      `🎉 **Schedule Event Lottery**\n\n` +
-      `Schedule a one-time special event with custom prize!\n\n` +
-      `**Usage:**\n` +
-      `\`/scheduleevent <time> <prize> "<name>"\`\n\n` +
-      `**Time formats:**\n` +
-      `• \`30m\` - 30 minutes from now\n` +
-      `• \`2h\` - 2 hours from now\n` +
-      `• \`12h\` - 12 hours from now\n` +
-      `• \`1d\` - 1 day from now\n` +
-      `• \`2d12h\` - 2 days and 12 hours\n` +
-      `• \`15:30\` - Today at 3:30 PM\n` +
-      `• \`9:00am\` - Today at 9:00 AM\n\n` +
-      `**Examples:**\n` +
-      `• \`/scheduleevent 12h 100000 "Mega Weekend"\`\n` +
-      `• \`/scheduleevent 6h30m 50000 "Evening Special"\`\n` +
-      `• \`/scheduleevent 1d 200000 "Daily Grand Prize"\`\n` +
-      `• \`/scheduleevent 20:00 75000 "Prime Time"\`\n\n` +
-      `**Options:**\n` +
-      `• \`--max <n>\` - Max players (default: 50)\n` +
-      `• \`--survivors <n>\` - Winners (default: auto)\n` +
-      `• \`--start <m>\` - Start delay in minutes\n\n` +
-      `**View scheduled events:**\n` +
-      `Use \`/scheduled\` to see all upcoming events`,
-      { parse_mode: 'Markdown' }
-    );
-  }
-  
-  // Parse time
-  const timeStr = args[0];
-  const scheduledTime = EventScheduler.parseScheduleTime(timeStr);
-  
-  if (!scheduledTime) {
-    return ctx.reply('❌ Invalid time format. Use formats like: 12h, 30m, 1d, 15:30');
-  }
-  
-  // Check if time is reasonable
-  const hoursUntil = (scheduledTime.getTime() - Date.now()) / (1000 * 60 * 60);
-  if (hoursUntil < 0.083) { // 5 minutes
-    return ctx.reply('❌ Event must be scheduled at least 5 minutes in the future.');
-  }
-  
-  // Parse prize
-  const prizeStr = args[1];
-  const eventPrize = parseInt(prizeStr);
-  
-  if (isNaN(eventPrize) || eventPrize < 1000) {
-    return ctx.reply('❌ Invalid prize amount. Minimum is 1,000 tokens.');
-  }
-  
-  // Parse event name
-  const nameMatch = commandText.match(/"([^"]+)"/i);
-  if (!nameMatch) {
-    return ctx.reply('❌ Event name required. Enclose in quotes: "Event Name"');
-  }
-  const eventName = nameMatch[1];
-  
-  // Parse options
-  let maxPlayers = 50;
-  let survivors = 0; // 0 means auto-calculate
-  let startMinutes = 5;
-  
-  const maxMatch = commandText.match(/--max\s+(\d+)/i);
-  if (maxMatch) {
-    maxPlayers = Math.min(Math.max(parseInt(maxMatch[1]), 2), 100);
-  }
-  
-  const survivorsMatch = commandText.match(/--survivors\s+(\d+)/i);
-  if (survivorsMatch) {
-    survivors = parseInt(survivorsMatch[1]);
-  }
-  
-  const startMatch = commandText.match(/--start\s+(\d+)/i);
-  if (startMatch) {
-    startMinutes = Math.min(Math.max(parseInt(startMatch[1]), 1), 30);
-  }
-  
-  // Auto-calculate survivors if not specified
-  if (survivors === 0) {
-    if (maxPlayers <= 10) survivors = 1;
-    else if (maxPlayers <= 25) survivors = 2;
-    else if (maxPlayers <= 50) survivors = 3;
-    else survivors = 5;
-  }
-  
-  // Validate survivors
-  if (survivors > maxPlayers / 2) {
-    return ctx.reply('❌ Too many survivors. Must be less than half of max players.');
-  }
-  
-  // Check for existing game
-  const currentGame = getCurrentGame(chatId);
-  if (currentGame && currentGame.state !== 'FINISHED') {
-    const conflictTime = new Date(currentGame.startTime);
-    const eventTime = scheduledTime;
-    
-    // Check if event would conflict with current game (within 30 minutes)
-    if (Math.abs(eventTime.getTime() - conflictTime.getTime()) < 30 * 60 * 1000) {
-      return ctx.reply(
-        `❌ This would conflict with the current game.\n` +
-        `Please schedule at least 30 minutes after current game ends.`
-      );
-    }
-  }
-  
-  // Schedule the event
-  const result = eventScheduler.scheduleEvent(
-    chatId,
-    scheduledTime,
-    eventName,
-    eventPrize,
-    maxPlayers,
-    survivors,
-    startMinutes,
-    userId
-  );
-  
-  if ('error' in result) {
-    return ctx.reply(`❌ ${result.error}`);
-  }
-  
-  // Success message
-  const timeUntil = scheduledTime.getTime() - Date.now();
-  const hoursDisplay = Math.floor(timeUntil / (1000 * 60 * 60));
-  const minutesDisplay = Math.floor((timeUntil % (1000 * 60 * 60)) / (1000 * 60));
-  
-  await ctx.reply(
-    `✅ **Event Scheduled!**\n\n` +
-    eventScheduler.formatEventInfo(result) + `\n\n` +
-    `📢 Players will be notified before the event starts.\n` +
-    `🎮 Use \`/scheduled\` to view all upcoming events.\n` +
-    `❌ Use \`/cancelevent ${result.id.substring(0, 8)}\` to cancel.`,
-    { parse_mode: 'Markdown' }
-  );
-});
-
-// Command: /cancelevent (admin) - Cancel a scheduled event
-bot.command('cancelevent', async (ctx): Promise<any> => {
-  const userId = ctx.from!.id.toString();
-  const chatId = ctx.chat.id.toString();
-  
-  if (!isAdminUser(userId)) {
-    return ctx.reply('❌ Admin only command.');
-  }
-  
-  const commandText = ctx.message?.text || '';
-  const args = commandText.split(' ').slice(1);
-  
-  if (args.length === 0) {
-    return ctx.reply(
-      `❌ Please provide the event ID.\n` +
-      `Usage: \`/cancelevent <eventId>\`\n` +
-      `Use \`/scheduled\` to see event IDs.`
-    );
-  }
-  
-  const eventId = args[0];
-  
-  // Find the full event ID (user might have provided partial)
-  const events = eventScheduler.getUpcomingEvents(chatId);
-  const event = events.find(e => e.id.startsWith(eventId));
-  
-  if (!event) {
-    return ctx.reply('❌ Event not found. Use /scheduled to see upcoming events.');
-  }
-  
-  if (eventScheduler.cancelEvent(event.id)) {
-    return ctx.reply(
-      `✅ **Event Cancelled**\n\n` +
-      `🎉 "${event.eventName}" has been cancelled.\n` +
-      `💰 Prize: ${event.eventPrize.toLocaleString()} tokens\n` +
-      `📅 Was scheduled for: ${event.scheduledTime.toLocaleString()}`
-    );
-  } else {
-    return ctx.reply('❌ Failed to cancel event.');
-  }
-});
-
 // /activatenext command - manually trigger next scheduled game
 bot.command('activatenext', async (ctx): Promise<any> => {
   const userId = ctx.from!.id.toString();
@@ -1931,82 +1633,109 @@ bot.command('activatenext', async (ctx): Promise<any> => {
   );
 });
 
-// /scheduled command - view upcoming scheduled games and events
+// /scheduled command - view upcoming scheduled games
 bot.command('scheduled', async (ctx): Promise<any> => {
   const chatId = ctx.chat.id.toString();
-  const userId = ctx.from!.id.toString();
-  const isAdmin = isAdminUser(userId);
   
-  // Get recurring schedule
+  // Get schedule for this chat
   const schedule = gameScheduler.getSchedule(chatId);
   
-  // Get upcoming events
-  const upcomingEvents = eventScheduler.getUpcomingEvents(chatId);
-  
-  if (!schedule && upcomingEvents.length === 0) {
+  if (!schedule) {
     return ctx.reply(
       `📅 **No Scheduled Games**\n\n` +
-      `There are no scheduled games or events for this chat.\n\n` +
-      `**Admins can schedule:**\n` +
-      `• \`/schedule\` - Recurring games\n` +
-      `• \`/scheduleevent\` - One-time events`,
+      `There are no scheduled games configured for this chat.\n\n` +
+      `Admins can use /schedule to set up automatic recurring games.`,
       { parse_mode: 'Markdown' }
     );
   }
   
-  let message = '📅 **Scheduled Games & Events**\n\n';
-  
-  // Show upcoming events first
-  if (upcomingEvents.length > 0) {
-    message += '🎉 **Upcoming Events:**\n';
-    for (const event of upcomingEvents.slice(0, 5)) { // Show max 5
-      const timeUntil = event.scheduledTime.getTime() - Date.now();
-      const hoursUntil = Math.floor(timeUntil / (1000 * 60 * 60));
-      const minutesUntil = Math.floor((timeUntil % (1000 * 60 * 60)) / (1000 * 60));
-      
-      const timeStr = hoursUntil > 0 
-        ? `${hoursUntil}h ${minutesUntil}m`
-        : `${minutesUntil}m`;
-      
-      message += `\n• **"${event.eventName}"**\n`;
-      message += `  💰 ${event.eventPrize.toLocaleString()} tokens\n`;
-      message += `  ⏰ In ${timeStr} (${event.scheduledTime.toLocaleTimeString()})\n`;
-      if (isAdmin) {
-        message += `  🆔 \`${event.id.substring(0, 8)}\`\n`;
-      }
-    }
-    
-    if (upcomingEvents.length > 5) {
-      message += `\n...and ${upcomingEvents.length - 5} more events\n`;
-    }
+  // Check if schedule is paused
+  if (!schedule.enabled) {
+    return ctx.reply(
+      `📅 **Scheduled Games Paused**\n\n` +
+      `Automatic scheduled games are currently paused for this chat.\n\n` +
+      `Admins can use /schedule resume to re-enable.`,
+      { parse_mode: 'Markdown' }
+    );
   }
   
-  // Show recurring schedule
-  if (schedule) {
-    message += '\n🔄 **Recurring Schedule:**\n';
-    
-    // Check if schedule is paused
-    if (!schedule.enabled) {
-      message += '⏸️ **Status:** Paused\n';
-      message += 'Admins can use `/schedule resume` to re-enable.\n';
-    } else {
-      const now = Date.now();
-      const timeUntilNext = schedule.nextRun.getTime() - now;
-      const minutesUntilNext = Math.ceil(timeUntilNext / 60000);
-      const hoursUntilNext = Math.floor(minutesUntilNext / 60);
-      const minsRemaining = minutesUntilNext % 60;
-      
-      const intervalHours = Math.floor(schedule.interval / 60);
-      const intervalMins = schedule.interval % 60;
-      const intervalStr = intervalHours > 0 
-        ? `${intervalHours}h ${intervalMins > 0 ? intervalMins + 'm' : ''}`
-        : `${intervalMins}m`;
-      
-      message += `• **Every ${intervalStr}**\n`;
-      message += `  👥 Max ${schedule.maxPlayers} players\n`;
-      message += `  🏆 ${schedule.survivors} survivor${schedule.survivors > 1 ? 's' : ''}\n`;
-      message += `  ⏭️ Next in ${hoursUntilNext}h ${minsRemaining}m\n`;
-    }
+  // Get current game info
+  const currentGame = getCurrentGame(chatId);
+  const hasActiveGame = currentGame && 
+    (currentGame.state === 'WAITING' || 
+     currentGame.state === 'NUMBER_SELECTION' || 
+     currentGame.state === 'DRAWING');
+  
+  // Calculate next game info
+  const now = Date.now();
+  const timeUntilNext = schedule.nextRun.getTime() - now;
+  const minutesUntilNext = Math.ceil(timeUntilNext / 60000);
+  const hoursUntilNext = Math.floor(minutesUntilNext / 60);
+  const minsRemaining = minutesUntilNext % 60;
+  
+  // Format times
+  const nextGameTime = schedule.nextRun.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+  
+  const intervalHours = Math.floor(schedule.interval / 60);
+  const intervalMins = schedule.interval % 60;
+  const intervalStr = intervalHours > 0 
+    ? `${intervalHours}h ${intervalMins > 0 ? intervalMins + 'm' : ''}`
+    : `${intervalMins}m`;
+  
+  // Build response message
+  let message = `📅 **Upcoming Scheduled Games**\n\n`;
+  
+  if (hasActiveGame) {
+    message += `🎮 **Active Game:** ${currentGame.gameId}\n`;
+    message += `👥 Players: ${currentGame.players.size}/${currentGame.maxPlayers}\n\n`;
+  }
+  
+  message += `⏰ **Next Game:** ${nextGameTime}\n`;
+  message += `⏳ Time Until: `;
+  
+  if (hoursUntilNext > 0) {
+    message += `${hoursUntilNext}h ${minsRemaining}m\n`;
+  } else {
+    message += `${minutesUntilNext} minutes\n`;
+  }
+  
+  message += `\n📊 **Schedule Details:**\n`;
+  message += `• Interval: Every ${intervalStr}\n`;
+  message += `• Max Players: ${schedule.maxPlayers}\n`;
+  message += `• Survivors: ${schedule.survivors}\n`;
+  message += `• Start Delay: ${schedule.startMinutes} minutes\n`;
+  message += `• Games Run: ${schedule.runCount}\n`;
+  
+  if (schedule.lastRun) {
+    const lastRunTime = schedule.lastRun.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    message += `• Last Game: ${lastRunTime}\n`;
+  }
+  
+  message += `\n💰 **Prize Pool Tiers:**\n`;
+  message += `• <10 players: 10K-20K\n`;
+  message += `• <20 players: 10K-35K\n`;
+  message += `• <30 players: 10K-50K\n`;
+  message += `• <40 players: 10K-70K\n`;
+  message += `• 50 players: 10K-100K\n`;
+  
+  // Add auto-activation info if within 30 minutes
+  if (!hasActiveGame && minutesUntilNext <= 30) {
+    message += `\n⚡ **Auto-Activation:** Game will open automatically when no active game is running!\n`;
+  }
+  
+  // Add admin info
+  const userId = ctx.from?.id?.toString();
+  if (userId && isAdminUser(userId)) {
+    message += `\n🔧 **Admin Commands:**\n`;
+    message += `• /activatenext - Open next game early\n`;
+    message += `• /schedule - Modify schedule\n`;
+    message += `• /schedule pause - Pause schedule\n`;
   }
   
   return ctx.reply(message, { parse_mode: 'Markdown' });
@@ -2131,36 +1860,28 @@ function scheduleGameAnnouncements(chatId: string, game: any, totalMinutes: numb
     const delayMs = (totalMinutes - time) * 60000;
     if (delayMs > 0) {
       setTimeout(() => {
-        try {
-          const currentGame = getCurrentGame(chatId);
-          if (currentGame && currentGame.state === 'WAITING') {
-            if (time >= 1) {
-              // Minutes announcement
-              sendGameAnnouncement(chatId, currentGame, Math.round(time), includeList);
-            } else if (time === 0.5) {
-              // 30 seconds
-              sendFinalCountdown(chatId, currentGame, 30);
-            } else if (time === 0.25) {
-              // 15 seconds
-              sendFinalCountdown(chatId, currentGame, 15);
-            } else if (time === 0.083) {
-              // 5 seconds - entries closed
-              sendEntriesClosedAnnouncement(chatId, currentGame);
-              // Schedule game start announcement
-              setTimeout(() => {
-                try {
-                  const game = getCurrentGame(chatId);
-                  if (game && game.state === 'IN_PROGRESS') {
-                    sendGameStartAnnouncement(chatId, game);
-                  }
-                } catch (error) {
-                  logger.error('Error sending game start announcement:', error);
-                }
-              }, 5000);
-            }
+        const currentGame = getCurrentGame(chatId);
+        if (currentGame && currentGame.state === 'WAITING') {
+          if (time >= 1) {
+            // Minutes announcement
+            sendGameAnnouncement(chatId, currentGame, Math.round(time), includeList);
+          } else if (time === 0.5) {
+            // 30 seconds
+            sendFinalCountdown(chatId, currentGame, 30);
+          } else if (time === 0.25) {
+            // 15 seconds
+            sendFinalCountdown(chatId, currentGame, 15);
+          } else if (time === 0.083) {
+            // 5 seconds - entries closed
+            sendEntriesClosedAnnouncement(chatId, currentGame);
+            // Schedule game start announcement
+            setTimeout(() => {
+              const game = getCurrentGame(chatId);
+              if (game && game.state === 'IN_PROGRESS') {
+                sendGameStartAnnouncement(chatId, game);
+              }
+            }, 5000);
           }
-        } catch (error) {
-          logger.error(`Error in game announcement for chat ${chatId}:`, error);
         }
       }, delayMs);
     }
@@ -2282,12 +2003,7 @@ async function createScheduledGame(chatId: string, config: any) {
     startMinutes: config.startMinutes,
     chatId: parseInt(chatId),
     scheduled: true,
-    scheduledStartTime: new Date(Date.now() + config.startMinutes * 60000),
-    // Special event properties
-    isSpecialEvent: config.isSpecialEvent || false,
-    eventName: config.eventName || 'Scheduled Game',
-    eventPrize: config.eventPrize || 0,
-    eventId: config.eventId || null
+    scheduledStartTime: new Date(Date.now() + config.startMinutes * 60000)
   };
   
   // Schedule game with absolute time
@@ -2308,39 +2024,20 @@ async function createScheduledGame(chatId: string, config: any) {
     minute: '2-digit' 
   });
     
-  let announceMessage;
-  
-  if (config.isSpecialEvent) {
-    announceMessage = 
-      `🎉 **SPECIAL EVENT ANNOUNCED!** 🎉\n\n` +
-      `🏆 Event: **${config.eventName}**\n` +
-      `💰 Prize Pool: **${config.eventPrize.toLocaleString()} tokens**\n` +
-      `🎲 Game ID: \`${newGame.gameId}\`\n` +
-      `🤖 Auto-created by scheduler\n` +
-      `⏰ **Starts at ${startTimeStr}** (in ${config.startMinutes} minutes)\n\n` +
-      `📊 **Game Settings:**\n` +
-      `• 👥 Max Players: **${config.maxPlayers}**\n` +
-      `• 🏆 Survivors: **${config.survivors}**\n` +
-      `• 🔢 Number Range: **1-${config.maxPlayers * 2}**\n\n` +
-      `✨ **GAME IS OPEN FOR JOINING NOW!**\n` +
-      `🎯 Join early to secure your spot!\n\n` +
-      `💬 Type /join or click the button below:`;
-  } else {
-    announceMessage = 
-      `🎰 **SCHEDULED LOTTERY ANNOUNCED!** 🎰\n\n` +
-      `🎲 Game ID: \`${newGame.gameId}\`\n` +
-      `🤖 Auto-created by scheduler\n` +
-      `⏰ **Starts at ${startTimeStr}** (in ${config.startMinutes} minutes)\n\n` +
-      `📊 **Game Settings:**\n` +
-      `• 👥 Max Players: **${config.maxPlayers}**\n` +
-      `• 🏆 Survivors: **${config.survivors}**\n` +
-      `• 🔢 Number Range: **1-${config.maxPlayers * 2}**\n` +
-      `• 💰 Prize Pool: **10K-20K** (<10 players)\n` +
-      `     35K max (<20), 50K (<30), 70K (<40), 100K (50)\n\n` +
-      `✨ **GAME IS OPEN FOR JOINING NOW!**\n` +
-      `🎯 Join early to secure your spot!\n\n` +
-      `💬 Type /join or click the button below:`;
-  }
+  const announceMessage = 
+    `🎰 **SCHEDULED LOTTERY ANNOUNCED!** 🎰\n\n` +
+    `🎲 Game ID: \`${newGame.gameId}\`\n` +
+    `🤖 Auto-created by scheduler\n` +
+    `⏰ **Starts at ${startTimeStr}** (in ${config.startMinutes} minutes)\n\n` +
+    `📊 **Game Settings:**\n` +
+    `• 👥 Max Players: **${config.maxPlayers}**\n` +
+    `• 🏆 Survivors: **${config.survivors}**\n` +
+    `• 🔢 Number Range: **1-${config.maxPlayers * 2}**\n` +
+    `• 💰 Prize Pool: **10K-20K** (<10 players)\n` +
+    `     35K max (<20), 50K (<30), 70K (<40), 100K (50)\n\n` +
+    `✨ **GAME IS OPEN FOR JOINING NOW!**\n` +
+    `🎯 Join early to secure your spot!\n\n` +
+    `💬 Type /join or click the button below:`;
   
   const joinKeyboard = {
     inline_keyboard: [
@@ -2456,17 +2153,16 @@ function parseGameConfig(text: string) {
 
 // Raid-related functions
 async function pauseForRaid(chatId: string, game: any) {
-  try {
-    game.raidPaused = true;
-    game.raidStartTime = new Date();
-    game.raidMessageCount = 0;
-    
-    // Initial raid announcement
-    await messageQueue.enqueue({
-      type: 'announcement',
-      chatId: chatId,
-      content: `🚨 **RAID TIME!** 🚨\n\n` +
-        `The lottery is PAUSED until everyone completes the raid!\n\n` +
+  game.raidPaused = true;
+  game.raidStartTime = new Date();
+  game.raidMessageCount = 0;
+  
+  // Initial raid announcement
+  await messageQueue.enqueue({
+    type: 'announcement',
+    chatId: chatId,
+    content: `🚨 **RAID TIME!** 🚨\n\n` +
+      `The lottery is PAUSED until everyone completes the raid!\n\n` +
       `💪 GET IN THERE AND ENGAGE!\n` +
       `❌ NO RAID = NO PRIZES!\n\n` +
       `Waiting for @memeworldraidbot to confirm completion...`,
@@ -2478,27 +2174,6 @@ async function pauseForRaid(chatId: string, game: any) {
   
   // Start engagement reminder timer
   startEngagementReminders(chatId, game);
-  } catch (error) {
-    logger.error(`❌ Error in pauseForRaid for chat ${chatId}:`, error);
-    console.error('Pause for raid error:', error);
-    
-    // Try to resume the game on error
-    try {
-      game.raidPaused = false;
-      game.raidMonitorActive = false;
-      if (game.raidReminderInterval) {
-        clearInterval(game.raidReminderInterval);
-      }
-      await bot.telegram.sendMessage(chatId, 
-        `⚠️ Error pausing for raid. Game will continue.`,
-        { parse_mode: 'Markdown' }
-      );
-      // Note: we don't have gameId here, using legacy mode
-      startDrawing(chatId);
-    } catch (resumeError) {
-      logger.error('Failed to resume game after raid pause error:', resumeError);
-    }
-  }
 }
 
 function startRaidMonitoring(chatId: string, game: any) {
@@ -2549,63 +2224,31 @@ function startEngagementReminders(chatId: string, game: any) {
 }
 
 async function handleRaidSuccess(chatId: string, game: any) {
-  try {
-    logger.info(`🎉 Processing raid success for game ${game.gameId} in chat ${chatId}`);
-    
-    // Clear raid state
-    game.raidPaused = false;
-    game.raidMonitorActive = false;
-    
-    // Clear reminder interval
-    if (game.raidReminderInterval) {
-      clearInterval(game.raidReminderInterval);
-      delete game.raidReminderInterval;
-      logger.info('🔇 Cleared raid reminder interval');
-    }
-    
-    // Save the updated game state immediately
-    setCurrentGame(chatId, game);
-    logger.info('💾 Saved game state after clearing raid flags');
-    
-    await messageQueue.enqueue({
-      type: 'announcement',
-      chatId: chatId,
-      content: `✅ **RAID SUCCESSFUL!** ✅\n\n` +
-        `Great job everyone! 🔥\n\n` +
-        `The lottery will resume in 10 seconds...\n` +
-        `Get ready for more eliminations! 💀\n\n` +
-        `🎲 Game: \`${game.gameId}\``,
-      options: { parse_mode: 'Markdown' },
-      priority: 'critical'
-    });
-    
-    logger.info('📢 Raid success announcement queued');
-    
-    // Resume drawing after 10 seconds
-    setTimeout(() => {
-      try {
-        logger.info(`⏰ 10 seconds elapsed - attempting to resume drawing for game ${game.gameId}`);
-        const currentGame = getCurrentGame(chatId);
-        if (currentGame && currentGame.state === 'DRAWING') {
-          logger.info(`▶️ Resuming drawing for game ${currentGame.gameId} after raid success`);
-          startDrawing(chatId, currentGame.gameId);
-        } else {
-          logger.warn(`⚠️ Cannot resume drawing - game state: ${currentGame?.state || 'no game'}`);
-        }
-      } catch (resumeError) {
-        logger.error('Failed to resume drawing after raid success:', resumeError);
-      }
-    }, 10000);
-    
-    logger.info('✅ Raid success handling completed');
-  } catch (error) {
-    logger.error(`❌ Error in handleRaidSuccess for chat ${chatId}:`, error);
-    console.error('Handle raid success error:', error);
-    // Try to resume game anyway
-    game.raidPaused = false;
-    game.raidMonitorActive = false;
-    setCurrentGame(chatId, game);
+  game.raidPaused = false;
+  game.raidMonitorActive = false;
+  
+  // Clear reminder interval
+  if (game.raidReminderInterval) {
+    clearInterval(game.raidReminderInterval);
   }
+  
+  await messageQueue.enqueue({
+    type: 'announcement',
+    chatId: chatId,
+    content: `✅ **RAID SUCCESSFUL!** ✅\n\n` +
+      `Great job everyone! 🔥\n\n` +
+      `The lottery will resume in 10 seconds...\n` +
+      `Get ready for more eliminations! 💀`,
+    priority: 'critical'
+  });
+  
+  // Resume drawing after 10 seconds
+  setTimeout(() => {
+    const currentGame = getCurrentGame(chatId);
+    if (currentGame && currentGame.state === 'DRAWING') {
+      startDrawing(chatId);
+    }
+  }, 10000);
 }
 
 // Helper function to cancel a lottery game
@@ -2623,17 +2266,16 @@ async function cancelLotteryGame(chatId: string, game: any, reason: string = 'MA
 }
 
 async function handleRaidFailure(chatId: string, game: any, isFirstFailure: boolean = true) {
-  try {
-    // Don't unpause on failure - cancel the lottery
-    game.raidMessageCount = 0;
-    
-    if (isFirstFailure) {
-      await messageQueue.enqueue({
-        type: 'announcement', 
-        chatId: chatId,
-        content: `❌ **RAID FAILED!** ❌\n\n` +
-          `PATHETIC! Not enough engagement! 😤\n\n` +
-          `🔚 **LOTTERY CANCELLED!** 🔚\n` +
+  // Don't unpause on failure - cancel the lottery
+  game.raidMessageCount = 0;
+  
+  if (isFirstFailure) {
+    await messageQueue.enqueue({
+      type: 'announcement', 
+      chatId: chatId,
+      content: `❌ **RAID FAILED!** ❌\n\n` +
+        `PATHETIC! Not enough engagement! 😤\n\n` +
+        `🔚 **LOTTERY CANCELLED!** 🔚\n` +
         `💀 NO SUCCESSFUL RAID = NO PRIZES! 💀\n\n` +
         `Game over! Create a new lottery if you dare to try again!`,
       priority: 'critical'
@@ -2656,44 +2298,23 @@ async function handleRaidFailure(chatId: string, game: any, isFirstFailure: bool
   
   // Track failure count
   game.raidFailureCount = (game.raidFailureCount || 0) + 1;
-  } catch (error) {
-    logger.error(`❌ Error in handleRaidFailure for chat ${chatId}:`, error);
-    console.error('Handle raid failure error:', error);
-    // Try to cancel the game anyway
-    try {
-      await cancelLotteryGame(chatId, game, 'RAID_FAILURE_ERROR');
-    } catch (cancelError) {
-      logger.error('Failed to cancel game after raid failure error:', cancelError);
-    }
-  }
 }
 
 // Check for overdue games and schedules periodically
 setInterval(() => {
-  try {
-    // Check overdue games
-    for (const [chatId, chatGames] of gameStates) {
-      if (chatGames instanceof Map) {
-        for (const [gameId, game] of chatGames) {
-          if (game.state === 'WAITING' && gameTimerManager.isOverdue(game.gameId)) {
-            logger.info(`Starting overdue game ${game.gameId}`);
-            startGame(chatId);
-          }
-        }
-      }
+  // Check overdue games
+  for (const [chatId, game] of gameStates) {
+    if (game.state === 'WAITING' && gameTimerManager.isOverdue(game.gameId)) {
+      logger.info(`Starting overdue game ${game.gameId}`);
+      startGame(chatId);
     }
-    
-    // Check overdue schedules
-    gameScheduler.checkOverdueSchedules();
-    
-    // Check overdue scheduled events
-    eventScheduler.checkOverdueEvents();
-    
-    // Check for scheduled games that can be auto-activated
-    gameScheduler.checkAndActivateScheduledGames(getCurrentGame);
-  } catch (error) {
-    logger.error('Error in periodic game check:', error);
   }
+  
+  // Check overdue schedules
+  gameScheduler.checkOverdueSchedules();
+  
+  // Check for scheduled games that can be auto-activated
+  gameScheduler.checkAndActivateScheduledGames(getCurrentGame);
 }, 10000); // Check every 10 seconds
 
 // Callback query handler
@@ -2701,6 +2322,29 @@ bot.on('callback_query', async (ctx): Promise<any> => {
   const data = (ctx.callbackQuery as any).data;
   if (!data) return;
 
+  // Handle quick actions (minimal UI)
+  if (data.startsWith('quick:')) {
+    const { quickJoin } = await import('./utils/quick-join.js');
+    const action = data.split(':')[1];
+    
+    switch (action) {
+      case 'join':
+        await quickJoin.handleQuickJoin(ctx);
+        break;
+      case 'status':
+        await quickJoin.showQuickStatus(ctx);
+        break;
+    }
+    return;
+  }
+  
+  // Handle user menu callbacks
+  if (data.startsWith('user:')) {
+    const { userMenu } = await import('./utils/user-menu.js');
+    await userMenu.handleCallback(ctx, data);
+    return;
+  }
+  
   // Handle admin menu callbacks
   if (data.startsWith('admin:')) {
     const userId = ctx.from!.id.toString();
@@ -2740,82 +2384,20 @@ bot.on('callback_query', async (ctx): Promise<any> => {
   // Handle other callbacks (status, etc.)
   const [action, gameId] = data.split('_');
   
-  switch (data) {
-    case 'help':
-      const userId = ctx.from!.id.toString();
-      const isAdmin = await isAdminUser(userId);
-      await handleHelpCommand(ctx, isAdmin);
-      await ctx.answerCbQuery();
-      break;
-      
-    case 'leaderboard':
-      await handleLeaderboardCommand(ctx);
-      await ctx.answerCbQuery();
-      break;
-      
-    case 'my_stats':
-      await handleStatsCommand(ctx);
-      await ctx.answerCbQuery();
-      break;
-      
-    case 'user_prize_stats':
-      await handlePrizeStatsCommand(ctx);
-      await ctx.answerCbQuery();
-      break;
-      
-    case 'user_winner_stats':
-      await handleWinnerStatsCommand(ctx);
-      await ctx.answerCbQuery();
-      break;
-      
-    case 'admin_panel':
-      const adminUserId = ctx.from!.id.toString();
-      if (await isAdminUser(adminUserId)) {
-        await ctx.reply(
-          '🔧 **Admin Panel**\n\nSelect an option:',
-          {
-            parse_mode: 'Markdown',
-            reply_markup: adminMenu.getMainMenu()
-          }
-        );
-      }
-      await ctx.answerCbQuery();
-      break;
-      
-    case 'create_game':
-      await ctx.answerCbQuery('Use /create to start a new game');
-      break;
-      
-    case 'join_game':
-      await ctx.answerCbQuery('Use /join to join an active game');
-      break;
-      
-    case 'game_status':
-      const currentGame = getCurrentGame(ctx.chat!.id.toString());
-      if (currentGame) {
-        await ctx.answerCbQuery(`Players: ${currentGame.players.size}/${currentGame.maxPlayers}`);
+  switch (action) {
+    // 'join' case removed - handled by bot.action(/join_(.+)/) above
+    
+    case 'status':
+      const game = getCurrentGame(ctx.chat!.id.toString());
+      if (game) {
+        await ctx.answerCbQuery(`Players: ${game.players.size}/${game.maxPlayers}`);
       } else {
         await ctx.answerCbQuery('No active game');
       }
       break;
       
     default:
-      // Handle legacy action_gameId format
-      const [action, gameId] = data.split('_');
-      
-      switch (action) {
-        case 'status':
-          const game = getCurrentGame(ctx.chat!.id.toString());
-          if (game) {
-            await ctx.answerCbQuery(`Players: ${game.players.size}/${game.maxPlayers}`);
-          } else {
-            await ctx.answerCbQuery('No active game');
-          }
-          break;
-          
-        default:
-          await ctx.answerCbQuery();
-      }
+      await ctx.answerCbQuery();
   }
 });
 
@@ -2980,132 +2562,324 @@ bot.command('resumelottery', async (ctx): Promise<any> => {
   }
 });
 
-// Command: /raidstatus - Check current raid status
-bot.command('raidstatus', async (ctx): Promise<any> => {
+// Command: /restart (admin)
+bot.command('restart', async (ctx) => {
+  const { handleRestartCommand } = await import('./commands/admin-commands.js');
+  await handleRestartCommand(ctx);
+});
+
+// Command: /logs (admin)
+bot.command('logs', async (ctx) => {
+  const { handleLogsCommand } = await import('./commands/admin-commands.js');
+  await handleLogsCommand(ctx);
+});
+
+// Command: /activegames (admin)
+bot.command('activegames', async (ctx) => {
+  const { handleActiveGamesCommand } = await import('./commands/admin-commands.js');
+  await handleActiveGamesCommand(ctx);
+});
+
+// Command: /scheduleevent (admin)
+bot.command('scheduleevent', async (ctx) => {
+  const { handleScheduleEventCommand } = await import('./commands/admin-commands.js');
+  await handleScheduleEventCommand(ctx);
+});
+
+// Command: /cancelevent (admin)
+bot.command('cancelevent', async (ctx) => {
+  const { handleCancelEventCommand } = await import('./commands/admin-commands.js');
+  await handleCancelEventCommand(ctx);
+});
+
+// Group management commands
+bot.command('addgroup', async (ctx): Promise<any> => {
   const userId = ctx.from!.id.toString();
-  const chatId = ctx.chat.id.toString();
   
   if (!isAdminUser(userId)) {
-    return ctx.reply('❌ Only admins can check raid status.');
+    return ctx.reply('❌ You are not authorized to use this command.');
   }
-  
-  if (!(await groupManager.isGroupEnabled(chatId))) {
-    return ctx.reply('❌ This group is not configured.');
-  }
-  
-  const currentGame = getCurrentGame(chatId);
-  if (!currentGame) {
-    return ctx.reply('❌ No active game found.');
-  }
-  
-  const statusInfo = 
-    `🚨 **Raid Status Report** 🚨\n\n` +
-    `🎲 Game ID: \`${currentGame.gameId}\`\n` +
-    `📊 Game State: **${currentGame.state}**\n` +
-    `⚔️ Raid Enabled: **${currentGame.raidEnabled ? 'YES' : 'NO'}**\n` +
-    `⏸️ Raid Paused: **${currentGame.raidPaused ? 'YES' : 'NO'}**\n` +
-    `👁️ Raid Monitor Active: **${currentGame.raidMonitorActive ? 'YES' : 'NO'}**\n` +
-    `📱 Raid Message Count: **${currentGame.raidMessageCount || 0}**\n` +
-    `⏰ Raid Start Time: ${currentGame.raidStartTime ? currentGame.raidStartTime.toLocaleString() : 'Not set'}\n` +
-    `❌ Raid Failure Count: **${currentGame.raidFailureCount || 0}**\n\n`;
 
-  if (currentGame.raidPaused && currentGame.raidMonitorActive) {
-    return ctx.reply(
-      statusInfo +
-      `🔴 **STATUS: WAITING FOR RAID COMPLETION**\n` +
-      `Use /forceresume to manually resume if raid is stuck.`,
-      { parse_mode: 'Markdown' }
-    );
-  } else if (currentGame.raidEnabled && !currentGame.raidPaused) {
-    return ctx.reply(
-      statusInfo +
-      `🟡 **STATUS: RAID ENABLED BUT NOT ACTIVE**`,
-      { parse_mode: 'Markdown' }
+  const chatId = ctx.chat.id.toString();
+  const chatTitle = 'title' in ctx.chat ? ctx.chat.title : `Group ${chatId}`;
+  
+  if (await groupManager.addGroup(chatId, chatTitle || 'Unknown Group', userId)) {
+    await ctx.reply(
+      `✅ Group Added Successfully!\n\n` +
+      `📋 Group: ${chatTitle}\n` +
+      `🆔 ID: ${chatId}\n` +
+      `👤 Added by: ${ctx.from!.first_name}\n\n` +
+      `The bot will now operate in this group.`
     );
   } else {
-    return ctx.reply(
-      statusInfo +
-      `🟢 **STATUS: NO RAID ISSUES**`,
-      { parse_mode: 'Markdown' }
+    await ctx.reply(
+      `⚠️ Group Already Configured\n\n` +
+      `This group is already in the bot's configuration.`
     );
   }
 });
 
-// Command: /forceresume - Emergency resume from raid mode
-bot.command('forceresume', async (ctx): Promise<any> => {
+bot.command('removegroup', async (ctx): Promise<any> => {
   const userId = ctx.from!.id.toString();
-  const chatId = ctx.chat.id.toString();
   
   if (!isAdminUser(userId)) {
-    return ctx.reply('❌ Only admins can force resume from raid mode.');
+    return ctx.reply('❌ You are not authorized to use this command.');
   }
+
+  const chatId = ctx.chat.id.toString();
   
-  if (!(await groupManager.isGroupEnabled(chatId))) {
-    return ctx.reply('❌ This group is not configured.');
-  }
-  
-  const currentGame = getCurrentGame(chatId);
-  if (!currentGame) {
-    return ctx.reply('❌ No active game found.');
-  }
-  
-  if (!currentGame.raidPaused && !currentGame.raidMonitorActive) {
-    return ctx.reply('❌ Game is not stuck in raid mode.');
-  }
-  
-  // Force clear raid state
-  currentGame.raidPaused = false;
-  currentGame.raidMonitorActive = false;
-  
-  // Clear raid reminder interval
-  if (currentGame.raidReminderInterval) {
-    clearInterval(currentGame.raidReminderInterval);
-    delete currentGame.raidReminderInterval;
-  }
-  
-  // Save the game state
-  setCurrentGame(chatId, currentGame);
-  
-  // Announce forced resume
-  messageQueue.enqueue({
-    type: 'announcement',
-    chatId,
-    content: 
-      `⚠️ **EMERGENCY RAID RESUME** ⚠️\n\n` +
-      `🔓 Admin has manually resumed the lottery!\n` +
-      `🎲 Game ID: \`${currentGame.gameId}\`\n` +
-      `👤 Resumed by: **${ctx.from?.first_name || 'Admin'}**\n\n` +
-      `🎰 **LOTTERY IS NOW ACTIVE AGAIN!**\n` +
-      `Drawing will continue shortly...`,
-    options: { parse_mode: 'Markdown' },
-    priority: 'high'
-  });
-  
-  await ctx.reply(
-    `✅ **Force Resume Successful!**\n\n` +
-    `🎲 Game: \`${currentGame.gameId}\`\n` +
-    `🔓 Raid state cleared\n` +
-    `▶️ Drawing will resume automatically\n\n` +
-    `**Game is now active!**`,
-    { parse_mode: 'Markdown' }
-  );
-  
-  // Continue drawing if game was in DRAWING state
-  if (currentGame.state === 'DRAWING') {
-    setTimeout(() => {
-      logger.info(`🔧 Force resuming drawing for game ${currentGame.gameId} after raid clear`);
-      startDrawing(chatId, currentGame.gameId);
-    }, 2000);
+  if (await groupManager.removeGroup(chatId)) {
+    await ctx.reply(
+      `✅ Group Removed Successfully!\n\n` +
+      `This group has been removed from the bot's configuration.\n` +
+      `The bot will no longer operate here.`
+    );
+  } else {
+    await ctx.reply(
+      `⚠️ Group Not Found\n\n` +
+      `This group is not in the bot's configuration.`
+    );
   }
 });
 
-// Help command
-bot.command('help', async (ctx) => {
+bot.command('listgroups', async (ctx): Promise<any> => {
   const userId = ctx.from!.id.toString();
-  const isAdmin = await isAdminUser(userId);
   
-  await handleHelpCommand(ctx, isAdmin);
+  if (!isAdminUser(userId)) {
+    return ctx.reply('❌ You are not authorized to use this command.');
+  }
+
+  const groups = await groupManager.getGroups();
+  
+  if (groups.length === 0) {
+    return ctx.reply('📋 No groups configured yet.\n\nUse /addgroup in a group to add it.');
+  }
+
+  let message = '📋 CONFIGURED GROUPS\n\n';
+  
+  for (const group of groups) {
+    const status = group.enabled ? '🟢 Active' : '🔴 Disabled';
+    message += `${status} ${group.name}\n`;
+    message += `   🆔 ID: ${group.id}\n`;
+    message += `   👤 Added by: ${group.addedBy}\n`;
+    message += `   📅 Added: ${new Date(group.addedAt).toLocaleDateString()}\n\n`;
+  }
+
+  await ctx.reply(message);
 });
+
+// Help command with nested command structure
+bot.command('help', (ctx) => {
+  const userId = ctx.from!.id.toString();
+  const isAdmin = isAdminUser(userId);
+  const args = ctx.message && 'text' in ctx.message ? ctx.message.text.split(' ') : [];
+  const topic = args[1]; // /help [topic]
+  
+  // Handle specific help topics
+  if (topic) {
+    return handleHelpTopic(ctx, topic, isAdmin);
+  }
+  
+  let message = '🎲 **SURVIVAL LOTTERY BOT HELP**\n\n';
+  
+  message += '📋 **QUICK START:**\n';
+  message += '• `/create` - Create a new lottery game\n';
+  message += '• `/join` - Join an active game\n';
+  message += '• `/status` - Check game status\n';
+  message += '• `/help commands` - See all commands\n\n';
+  
+  message += '🎯 **HOW TO PLAY:**\n';
+  message += '• Join or create a lottery game\n';
+  message += '• Each player gets a unique number\n';
+  message += '• Numbers are drawn randomly\n';
+  message += '• If your number is drawn, you\'re eliminated!\n';
+  message += '• Last survivor(s) win prizes!\n\n';
+  
+  message += '📖 **HELP TOPICS:**\n';
+  message += '• `/help commands` - All available commands\n';
+  message += '• `/help game` - Game mechanics\n';
+  message += '• `/help prizes` - Prize information\n';
+  message += '• `/help stats` - Statistics commands\n';
+  if (isAdmin) {
+    message += '• `/help admin` - Admin commands\n';
+  }
+  
+  message += '💰 **PRIZES:**\n';
+  message += 'Winners split 10,000-50,000 tokens!\n\n';
+  
+  message += '🎮 **QUICK START:**\n';
+  message += 'Type `/start` to open the main menu\n\n';
+  
+  if (isAdmin) {
+    message += '👑 **ADMIN COMMANDS:**\n';
+    message += '• `/admin` - Admin panel\n';
+    message += '• `/create --event <prize> "<name>"` - Create special event\n';
+    message += '• `/endgame` - End current game\n';
+    message += '• `/pauselottery` - Pause active lottery\n';
+    message += '• `/resumelottery` - Resume paused lottery\n';
+    message += '• `/forcestart` - Force start waiting game\n';
+    message += '• Group management and configuration\n\n';
+    
+    message += '🎉 **SPECIAL EVENTS:**\n';
+    message += 'Create events with custom prizes:\n';
+    message += '`/create --event 20000 "MWOR Madness"`\n\n';
+  }
+  
+  message += '💡 **TIP:** Use `/start` for the interactive menu!';
+
+  ctx.reply(message, { parse_mode: 'Markdown' });
+});
+
+// Handle help topics function
+async function handleHelpTopic(ctx: Context, topic: string, isAdmin: boolean) {
+  let message = '';
+  
+  switch (topic.toLowerCase()) {
+    case 'commands':
+      message = '📋 **ALL COMMANDS**\n\n';
+      message += '🎮 **GAME COMMANDS:**\n';
+      message += '• `/create` - Create a new lottery game\n';
+      message += '• `/join` - Join an active lottery\n';
+      message += '• `/status` - Check current game status\n';
+      message += '• `/scheduled` - View scheduled games\n\n';
+      
+      message += '📊 **STATISTICS:**\n';
+      message += '• `/stats` - Your personal statistics\n';
+      message += '• `/leaderboard` - Top players\n';
+      message += '• `/prizestats` - Prize distribution\n';
+      message += '• `/winnerstats` - Biggest winners\n\n';
+      
+      message += '🔧 **UTILITY:**\n';
+      message += '• `/start` - Show main menu\n';
+      message += '• `/help [topic]` - This help system\n\n';
+      
+      if (isAdmin) {
+        message += '👑 **ADMIN COMMANDS:**\n';
+        message += '• `/admin` - Admin control panel\n';
+        message += '• `/addadmin` - Add new admin (reply to user)\n';
+        message += '• `/deleteadmin` - Remove admin (reply to user)\n';
+        message += '• `/addgroup` - Enable bot in current group\n';
+        message += '• `/removegroup` - Disable bot in current group\n';
+        message += '• `/listgroups` - List all configured groups\n\n';
+        
+        message += '🎮 **GAME CONTROL:**\n';
+        message += '• `/forcestart` - Force start waiting game\n';
+        message += '• `/approve` - Approve pending game\n';
+        message += '• `/endgame` - End current game\n';
+        message += '• `/pauselottery` - Pause active game\n';
+        message += '• `/resumelottery` - Resume paused game\n';
+        message += '• `/resumedraw` - Resume drawing phase\n\n';
+        
+        message += '📅 **SCHEDULING:**\n';
+        message += '• `/schedule` - Create game schedule\n';
+        message += '• `/scheduleevent` - Schedule special event\n';
+        message += '• `/cancelevent` - Cancel scheduled event\n';
+        message += '• `/activatenext` - Activate next scheduled game\n';
+        message += '• `/activegames` - List all active games\n\n';
+        
+        message += '🔧 **SYSTEM:**\n';
+        message += '• `/restart` - Restart the bot\n';
+        message += '• `/logs` - View recent logs\n';
+      }
+      break;
+      
+    case 'game':
+      message = '🎯 **GAME MECHANICS**\n\n';
+      message += '**How Lottery Works:**\n';
+      message += '1️⃣ Players join a lottery game\n';
+      message += '2️⃣ Each player gets a unique random number\n';
+      message += '3️⃣ Game starts automatically or when full\n';
+      message += '4️⃣ Numbers are drawn randomly one by one\n';
+      message += '5️⃣ If your number is drawn, you\'re eliminated\n';
+      message += '6️⃣ Last survivor(s) win the prize pool\n\n';
+      
+      message += '**Game Types:**\n';
+      message += '• **Standard** - Random prize pool\n';
+      message += '• **Custom** - Set player limits and delays\n';
+      message += '• **Event** - Special themed games with custom prizes\n\n';
+      
+      message += '**Game States:**\n';
+      message += '• **WAITING** - Players can join\n';
+      message += '• **ACTIVE** - Drawing numbers\n';
+      message += '• **PAUSED** - Temporarily stopped\n';
+      message += '• **FINISHED** - Game completed\n';
+      break;
+      
+    case 'prizes':
+      message = '💰 **PRIZE INFORMATION**\n\n';
+      message += '**Prize Pools:**\n';
+      message += '• Standard games: 10,000-50,000 tokens\n';
+      message += '• Event games: Custom amounts (up to 1M)\n';
+      message += '• Multiple survivors split the prize\n\n';
+      
+      message += '**Prize Distribution:**\n';
+      message += '• Equal split among all survivors\n';
+      message += '• Minimum 1 survivor guaranteed\n';
+      message += '• Maximum survivors: 3 (configurable)\n\n';
+      
+      message += '**How to Win:**\n';
+      message += '• Survive until the end\n';
+      message += '• Don\'t get your number drawn\n';
+      message += '• Pure luck - no skill involved!\n';
+      break;
+      
+    case 'stats':
+      message = '📊 **STATISTICS COMMANDS**\n\n';
+      message += '**Personal Stats:**\n';
+      message += '• `/stats` - Your game history and performance\n';
+      message += '• Shows games played, won, survival rate\n\n';
+      
+      message += '**Global Stats:**\n';
+      message += '• `/leaderboard` - Top players by wins\n';
+      message += '• `/prizestats` - Prize distribution analysis\n';
+      message += '• `/winnerstats` - Biggest prize winners\n\n';
+      
+      message += '**Stat Categories:**\n';
+      message += '• Games played and won\n';
+      message += '• Total tokens earned\n';
+      message += '• Average survival rounds\n';
+      message += '• Win/loss ratio\n';
+      break;
+      
+    case 'admin':
+      if (!isAdmin) {
+        message = '❌ Admin help is only available to administrators.';
+        break;
+      }
+      message = '👑 **ADMIN HELP**\n\n';
+      message += '**Admin Panel:**\n';
+      message += '• Use `/admin` to access the full admin panel\n';
+      message += '• All admin functions available through menus\n';
+      message += '• Real-time game monitoring and control\n\n';
+      
+      message += '**Key Admin Functions:**\n';
+      message += '• **Game Control** - Start, stop, pause games\n';
+      message += '• **User Management** - Add/remove admins\n';
+      message += '• **Group Management** - Enable/disable groups\n';
+      message += '• **Scheduling** - Set up automated games\n';
+      message += '• **System** - Restart bot, view logs\n\n';
+      
+      message += '**Emergency Commands:**\n';
+      message += '• `/forcestart` - Force start stuck games\n';
+      message += '• `/endgame` - Emergency game termination\n';
+      message += '• `/restart confirm` - Bot restart with confirmation\n';
+      break;
+      
+    default:
+      message = `❌ **Unknown Help Topic: "${topic}"**\n\n`;
+      message += 'Available topics:\n';
+      message += '• `commands` - All available commands\n';
+      message += '• `game` - Game mechanics\n';
+      message += '• `prizes` - Prize information\n';
+      message += '• `stats` - Statistics commands\n';
+      if (isAdmin) {
+        message += '• `admin` - Admin commands\n';
+      }
+      break;
+  }
+  
+  await ctx.reply(message, { parse_mode: 'Markdown' });
+}
 
 // Command: /start
 bot.command('start', (ctx) => {
@@ -3141,7 +2915,8 @@ bot.command('start', (ctx) => {
   ]);
   
   keyboard.push([
-    { text: '❓ Help', callback_data: 'help' }
+    { text: '❓ Help', callback_data: 'help' },
+    { text: '🔒 Private Menu', callback_data: 'user:private' }
   ]);
   
   ctx.reply(
@@ -3203,45 +2978,19 @@ bot.on('message', async (ctx) => {
       // Check for raid completion if game is paused and waiting
       if (currentGame && currentGame.raidPaused && currentGame.raidMonitorActive) {
         
-        // Enhanced raid completion detection
-        logger.info(`🔍 Checking raid bot message for completion patterns: "${messageText.substring(0, 100)}..."`);
-        
-        // Check for success patterns (more comprehensive)
-        const successPatterns = [
-          '🎊 Raid Ended - Targets Reached!',
-          '🟩 Likes',
-          '🔥 Trending',
-          'Raid Successful',
-          'RAID SUCCESSFUL',
-          'Targets Reached',
-          'Well done',
-          'Great job'
-        ];
-        
-        const failurePatterns = [
-          '⚠️ Raid Ended - Time limit reached!',
-          '🟥 Likes',
-          'Raid Failed',
-          'RAID FAILED',
-          'Time limit reached',
-          'Not enough',
-          'Failed to reach'
-        ];
-        
-        const isSuccess = successPatterns.some(pattern => messageText.includes(pattern));
-        const isFailure = failurePatterns.some(pattern => messageText.includes(pattern));
-        
-        if (isSuccess) {
-          logger.info('🎉 Raid success detected from raid bot - patterns matched');
+        // Check for success message
+        if (messageText.includes('🎊 Raid Ended - Targets Reached!') || 
+            messageText.includes('🟩 Likes') || 
+            messageText.includes('🔥 Trending')) {
+          logger.info('Raid success detected from raid bot');
           await handleRaidSuccess(chatId, currentGame);
         }
-        else if (isFailure) {
-          logger.info('❌ Raid failure detected from raid bot - patterns matched');  
+        // Check for failure message
+        else if (messageText.includes('⚠️ Raid Ended - Time limit reached!') || 
+                 messageText.includes('🟥 Likes')) {
+          logger.info('Raid failure detected from raid bot');
           const isFirstFailure = !currentGame.raidFailureCount || currentGame.raidFailureCount === 0;
           await handleRaidFailure(chatId, currentGame, isFirstFailure);
-        }
-        else {
-          logger.info('🔍 Raid bot message did not match success/failure patterns - continuing to monitor');
         }
       }
     }
@@ -3294,56 +3043,13 @@ async function startBot() {
     const me = await bot.telegram.getMe();
     logger.info('✅ Bot started:', me.username);
     
-    // Start dashboard with monitoring stack
-    await startDashboard();
-    
     await bot.launch();
-    
-    // Start legacy dashboard server for backward compatibility
-    const dashboardPort = parseInt(process.env.PORT || process.env.DASHBOARD_PORT || '3000');
-    const dashboardToken = process.env.DASHBOARD_AUTH_TOKEN || 'admin123';
-    const dashboard = new DashboardServer(dashboardPort, dashboardToken);
-    
-    // Set up game data callback
-    dashboard.setGameDataCallback(() => formatGameDataForDashboard(gameStates));
-    
-    // Start legacy dashboard
-    dashboard.start();
-    
-    // Update both dashboards on game state changes
-    const originalSaveGames = gamePersistence.saveGames.bind(gamePersistence);
-    gamePersistence.saveGames = async (states: Map<string, any>) => {
-      await originalSaveGames(states);
-      dashboard.updateGames(formatGameDataForDashboard(states));
-      
-      // Update new dashboard API
-      states.forEach((gameData, gameId) => {
-        dashboardAPI.updateGame(gameId, {
-          gameId,
-          chatId: gameData.chatId,
-          chatName: gameData.chatName,
-          state: gameData.state,
-          players: gameData.players,
-          maxPlayers: gameData.maxPlayers,
-          survivors: gameData.survivors,
-          startTime: gameData.startTime,
-          endTime: gameData.endTime,
-          isSpecialEvent: gameData.isSpecialEvent,
-          eventPrize: gameData.eventPrize,
-          eventName: gameData.eventName,
-          createdBy: gameData.createdBy,
-          winnerCount: gameData.winnerCount,
-          currentPrize: gameData.currentPrize
-        });
-      });
-    };
     
     console.log('🎰 Enhanced Lottery Bot Running!');
     console.log('📬 Advanced message queuing active');
     console.log('🎯 Dynamic game speed enabled');
     console.log('🎭 Suspense messages ready');
     console.log('🚀 Zero response to late joins');
-    console.log(`🌐 Dashboard: http://localhost:${dashboardPort}`);
     
   } catch (error: any) {
     logger.error('Failed to start bot:', error.message);
@@ -3356,14 +3062,45 @@ async function startBot() {
 startBot();
 
 // Enable graceful stop
-process.once('SIGINT', async () => {
-  logger.info('Received SIGINT, shutting down gracefully...');
-  bot.stop('SIGINT');
-  await dashboardAPI.stop();
-});
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
 
-process.once('SIGTERM', async () => {
-  logger.info('Received SIGTERM, shutting down gracefully...');
-  bot.stop('SIGTERM');
-  await dashboardAPI.stop();
-});
+// Exports for admin commands and other modules
+export { getCurrentGame, getActiveGames, isAdminUser };
+
+// Export function to create event games
+export async function createEventGame(params: {
+  chatId: string;
+  prizeAmount: number;
+  eventName: string;
+}): Promise<void> {
+  const { chatId, prizeAmount, eventName } = params;
+  
+  // Check if there's already an active game
+  const currentGame = getCurrentGame(chatId);
+  if (currentGame) {
+    throw new Error('A game is already active in this chat');
+  }
+  
+  // Create the event game using the bot context
+  const ctx = {
+    chat: { id: chatId },
+    from: { id: 'system', username: 'System' },
+    reply: async (text: string, options?: any) => {
+      await bot.telegram.sendMessage(chatId, text, options);
+    }
+  };
+  
+  // Trigger game creation with event parameters
+  const command = `/create --event ${prizeAmount} "${eventName}"`;
+  const fakeMessage = {
+    message: {
+      text: command,
+      from: { id: 'system' },
+      chat: { id: chatId },
+      date: Date.now()
+    }
+  };
+  
+  await bot.handleUpdate(fakeMessage as any);
+}

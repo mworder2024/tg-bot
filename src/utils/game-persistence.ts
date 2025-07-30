@@ -12,7 +12,7 @@ class GamePersistence {
   private useRedis: boolean = true; // Enable Redis for better performance
 
   constructor() {
-    this.savePath = path.join(__dirname, '../config/games.json');
+    this.savePath = path.join(__dirname, '../../data/games.json');
     
     // Check if Redis client is available
     const client = getRedisClient();
