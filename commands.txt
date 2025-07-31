@@ -1,0 +1,31 @@
+start - 🎰 Start the bot and show main menu
+help - 📚 Show help and game instructions
+create - 🎮 Create a new lottery game
+join - 🎲 Join the current lottery game
+status - 📊 View current game status
+leaderboard - 🏆 Show player rankings
+stats - 📈 View your personal statistics
+prizestats - 💎 Show recent prize history
+winnerstats - 🏅 View winner statistics
+schedule - 📅 Schedule automatic games
+scheduled - 📋 View scheduled games
+pauselottery - ⏸️ Pause current lottery
+resumelottery - ▶️ Resume paused lottery
+activegames - 🎯 View all active games
+admin - 🔧 Admin control panel
+addadmin - ➕ Add new admin
+deleteadmin - ➖ Remove admin
+addgroup - 📥 Add group to bot
+removegroup - 📤 Remove group from bot
+listgroups - 📋 List all groups
+forcestart - 🚀 Force start the game
+endgame - 🛑 End current game
+resumedraw - 🔄 Resume draw process
+restart - 🔄 Restart the bot
+logs - 📜 View bot logs
+activatenext - ⏭️ Activate next scheduled game
+scheduleevent - 📅 Schedule special event
+cancelevent - ❌ Cancel scheduled event
+getchatid - 🆔 Get current chat ID
+myid - 👤 Get your user ID
+approve - ✅ Approve pending action
