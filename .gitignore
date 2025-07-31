@@ -190,3 +190,15 @@ claude-flow
 claude-flow.bat
 claude-flow.ps1
 hive-mind-prompt-*.txt
+
+# Additional project-specific files
+bot.log
+logs/
+*.log
+package.json.backup
+fix-railway-env.sh
+set-railway-token.sh
+verify-token.js
+.cursor/
+trellis-image-large/
+vite-boilerplate/
