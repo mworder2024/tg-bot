@@ -1,31 +1,43 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ES2022",
     "module": "commonjs",
-    "lib": ["ES2020"],
+    "lib": ["ES2022"],
     "moduleResolution": "node",
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": false,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": false,
-    "resolveJsonModule": true,
     "noImplicitAny": false,
     "strictNullChecks": false,
-    "strictFunctionTypes": false,
-    "noImplicitThis": false,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "noImplicitReturns": false,
-    "noFallthroughCasesInSwitch": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": false,
     "allowSyntheticDefaultImports": true,
     "downlevelIteration": true,
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
+    "exactOptionalPropertyTypes": false,
+    "noUncheckedIndexedAccess": false,
+    "noImplicitOverride": true,
+    "useDefineForClassFields": true,
     "types": ["jest", "node"]
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "coverage", "tests", "src/monitoring/sentry.config.ts", "src/services/error-monitoring.service.ts"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "coverage",
+    "tests",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "src/blockchain/**/*",
+    "src/services/blockchain/**/*",
+    "src/services/error-monitoring.service.ts",
+    "src/monitoring/**/*"
+  ]
 }

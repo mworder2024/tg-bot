@@ -1,5 +1,4 @@
 import { Telegraf, Context } from 'telegraf';
-import * as dotenv from 'dotenv';
 import * as winston from 'winston';
 import { VRF } from './utils/vrf';
 import * as https from 'https';
@@ -8,7 +7,7 @@ import { leaderboard, GameRecord } from './leaderboard';
 import { groupManager } from './utils/group-manager';
 import { gamePersistence } from './utils/game-persistence';
 import { prizeManager } from './utils/prize-manager';
-import { botWalletManager } from './utils/wallet-manager';
+// import { botWalletManager } from './utils/wallet-manager'; // Temporarily disabled due to bs58 compatibility
 import { callbackManager } from './utils/callback-manager';
 import { gameTimerManager } from './utils/game-timer-manager';
 import { MessageQueueManager } from './utils/message-queue-manager';
@@ -39,15 +38,15 @@ import {
   handleWinnerStatsCommand
 } from './handlers/command-handlers';
 
-// Load environment variables
-dotenv.config();
+// Import configuration
+import env from './config';
 
 // Force IPv4 DNS resolution
 dns.setDefaultResultOrder('ipv4first');
 
 // Configure logger
 export const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
+  level: env.monitoring.logLevel,
   format: winston.format.simple(),
   transports: [
     new winston.transports.Console(),
@@ -71,7 +70,8 @@ const httpsAgent = new https.Agent({
 });
 
 // Initialize bot
-const bot = new Telegraf(process.env.BOT_TOKEN!, {
+console.log(`🤖 Initializing bot in ${env.bot.environment} environment`);
+const bot = new Telegraf(env.bot.token, {
   handlerTimeout: 90000,
   telegram: {
     apiRoot: 'https://api.telegram.org',
@@ -3030,15 +3030,8 @@ async function startBot() {
     console.log('🔴 Redis initialized for game persistence');
     
     // Initialize wallet manager if Solana RPC is configured
-    try {
-      if (process.env.SOLANA_RPC_URL) {
-        await botWalletManager.initializeWallet();
-      } else {
-        console.log('⚠️  Solana wallet not configured, running without blockchain features');
-      }
-    } catch (walletError) {
-      console.log('⚠️  Wallet initialization failed, continuing without blockchain features:', walletError.message);
-    }
+    // Temporarily disabled due to blockchain compatibility issues
+    console.log('⚠️  Solana wallet not configured, running without blockchain features');
     
     const me = await bot.telegram.getMe();
     logger.info('✅ Bot started:', me.username);

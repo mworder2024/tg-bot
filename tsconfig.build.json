@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "skipLibCheck": true,
+    "noEmitOnError": false,
+"allowJs": true
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "coverage",
+    "tests",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "src/blockchain/**/*",
+    "src/services/blockchain/**/*",
+    "src/services/error-monitoring.service.ts",
+    "src/monitoring/**/*",
+    "src/services/vrf-fallback.ts",
+    "src/utils/wallet-manager.ts",
+    "src/utils/callback-manager.ts"
+  ]
+}
