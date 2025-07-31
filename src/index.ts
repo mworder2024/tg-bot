@@ -3033,8 +3033,14 @@ async function startBot() {
     // Temporarily disabled due to blockchain compatibility issues
     console.log('⚠️  Solana wallet not configured, running without blockchain features');
     
-    const me = await bot.telegram.getMe();
-    logger.info('✅ Bot started:', me.username);
+    try {
+      const me = await bot.telegram.getMe();
+      console.log('Bot info:', JSON.stringify(me, null, 2));
+      logger.info(`✅ Bot started: @${me.username || 'Unknown'}`);
+    } catch (error) {
+      console.error('Failed to get bot info:', error);
+      logger.error('Failed to get bot info:', error);
+    }
     
     await bot.launch();
     
