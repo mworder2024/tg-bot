@@ -1,91 +1,40 @@
-import { Telegraf } from 'telegraf';
-import * as dotenv from 'dotenv';
-import * as winston from 'winston';
+#!/usr/bin/env node
 
-// Load environment variables
-dotenv.config();
-
-// Configure logger
-const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.Console({
-      format: winston.format.simple()
-    })
-  ],
-});
+// Railway-specific entry point
+console.log('🚂 Starting bot in Railway environment...');
+console.log('🔍 Environment check:');
+console.log('- NODE_ENV:', process.env.NODE_ENV);
+console.log('- ENVIRONMENT:', process.env.ENVIRONMENT || 'not set');
+console.log('- BOT_TOKEN exists:', !!process.env.BOT_TOKEN);
+console.log('- BOT_TOKEN length:', process.env.BOT_TOKEN?.length || 0);
+console.log('- REDIS_URL exists:', !!process.env.REDIS_URL);
+console.log('- PORT:', process.env.PORT || 'not set');
 
 // Check required environment variables
 const requiredEnvVars = ['BOT_TOKEN'];
 const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
 
 if (missingEnvVars.length > 0) {
-  logger.error('Missing required environment variables:', missingEnvVars);
-  logger.error('Please set these variables in Railway dashboard');
+  console.error('❌ CRITICAL ERROR: Missing required environment variables:', missingEnvVars);
+  console.error('Please set these variables in Railway environment variables:');
+  console.error('- BOT_TOKEN: Your Telegram bot token from @BotFather');
   process.exit(1);
 }
 
-// Simple health check endpoint for Railway
-if (process.env.PORT) {
-  const http = require('http');
-  const server = http.createServer((req: any, res: any) => {
-    if (req.url === '/health') {
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
-      res.end('OK');
-    } else {
-      res.writeHead(404);
-      res.end();
-    }
-  });
-  
-  server.listen(process.env.PORT, () => {
-    logger.info(`Health check server listening on port ${process.env.PORT}`);
-  });
+// Set production environment if not specified
+if (!process.env.ENVIRONMENT) {
+  process.env.ENVIRONMENT = 'production';
+  console.log('⚠️ ENVIRONMENT not set, defaulting to production');
 }
 
-async function startBot() {
-  try {
-    logger.info('Starting Telegram bot...');
-    
-    // Initialize bot with minimal config
-    const bot = new Telegraf(process.env.BOT_TOKEN!);
-    
-    // Simple test command
-    bot.command('start', (ctx) => {
-      ctx.reply('Bot is running on Railway! 🚂');
-    });
-    
-    bot.command('health', (ctx) => {
-      ctx.reply('Bot is healthy and running! ✅');
-    });
-    
-    // Error handling
-    bot.catch((err: any, ctx: any) => {
-      logger.error('Bot error:', err);
-      ctx.reply('Sorry, an error occurred!');
-    });
-    
-    // Launch bot
-    await bot.launch();
-    logger.info('Bot started successfully!');
-    
-    // Enable graceful stop
-    process.once('SIGINT', () => bot.stop('SIGINT'));
-    process.once('SIGTERM', () => bot.stop('SIGTERM'));
-    
-  } catch (error) {
-    logger.error('Failed to start bot:', error);
-    process.exit(1);
-  }
-}
+// Set NODE_ENV for proper configuration
+process.env.NODE_ENV = process.env.NODE_ENV || 'production';
 
-// Start the bot
-startBot().catch(err => {
-  logger.error('Unhandled error:', err);
+console.log('✅ Environment validated, starting full bot...');
+
+// Import and start the main bot
+// This will use the main index.js with all features
+import('./index.js').catch(err => {
+  console.error('Failed to start bot:', err);
   process.exit(1);
 });
