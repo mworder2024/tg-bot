@@ -1,7 +1,7 @@
 import { Context } from 'telegraf';
 import { InlineKeyboardMarkup } from 'telegraf/types';
 import { gameScheduler } from './game-scheduler';
-// import { gameSpeedManager } from './game-speed-manager'; // Removed unused import
+import { gameSpeedManager } from './game-speed-manager';
 import { groupManager } from './group-manager';
 import { gameConfigManager } from './game-config-manager';
 

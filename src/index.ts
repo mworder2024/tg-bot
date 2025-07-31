@@ -2999,6 +2999,41 @@ bot.on('message', async (ctx) => {
   }
 });
 
+// Text handler for event name input
+bot.on('text', async (ctx) => {
+  const userId = ctx.from?.id?.toString();
+  if (userId) {
+    const { userMenu } = await import('./utils/user-menu.js');
+    const state = userMenu.getMenuState(userId);
+    
+    if (state?.menu === 'event_name' && state.prize) {
+      const eventName = ctx.message.text;
+      
+      // Execute the create command with event parameters
+      const command = `/create --event ${state.prize} "${eventName}"`;
+      await ctx.reply(`Creating event game: ${eventName} with ${state.prize} tokens prize pool...`);
+      
+      // Clear the state
+      userMenu.clearMenuState(userId);
+      
+      // Create a fake update with the command
+      const fakeUpdate = {
+        update_id: Date.now(),
+        message: {
+          message_id: Date.now(),
+          from: ctx.from,
+          chat: ctx.chat,
+          date: Math.floor(Date.now() / 1000),
+          text: command
+        }
+      };
+      
+      // Handle the update directly through the bot
+      await bot.handleUpdate(fakeUpdate);
+    }
+  }
+});
+
 // Error handler
 bot.catch((err: any, ctx) => {
   logger.error(`Error for ${ctx.updateType}:`, err);
@@ -3065,7 +3100,7 @@ process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
 
 // Exports for admin commands and other modules
-export { getCurrentGame, getActiveGames, isAdminUser };
+export { getCurrentGame, getActiveGames, isAdminUser, bot };
 
 // Export function to create event games
 export async function createEventGame(params: {

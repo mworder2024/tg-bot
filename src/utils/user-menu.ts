@@ -4,6 +4,7 @@ import { InlineKeyboardMarkup } from 'telegraf/types';
 export interface UserMenuState {
   menu: string;
   data?: any;
+  prize?: string;
 }
 
 /**
@@ -208,6 +209,28 @@ export class UserMenu {
     const action = parts[2];
     const subAction = parts[3];
     
+    // Handle custom game execution
+    if (menu === 'custom_exec') {
+      const param = action;
+      const value = subAction;
+      await this.executeCommand(ctx, `/create --${param} ${value}`);
+      return;
+    }
+    
+    // Handle event prize selection
+    if (menu === 'event_prize') {
+      const prize = action;
+      this.setMenuState(userId, { menu: 'event_name', prize });
+      await ctx.answerCbQuery();
+      await ctx.editMessageText(
+        '🌟 **Event Name**\n\n' +
+        'Please type the event name in the chat:',
+        { parse_mode: 'Markdown' }
+      );
+      // Store state so we can handle the next text message
+      return;
+    }
+    
     // For group chats, offer private menu option
     if (ctx.chat?.type !== 'private' && usePrivateMenu) {
       const { privateMenuHandler } = await import('./private-menu-handler.js');
@@ -296,27 +319,15 @@ export class UserMenu {
         }
         break;
 
-      // Direct command triggers
+      // Direct command triggers - execute directly
       case 'join':
-        await this.triggerCommand(ctx, '/join');
-        break;
       case 'status':
-        await this.triggerCommand(ctx, '/status');
-        break;
       case 'mynumber':
-        await this.triggerCommand(ctx, '/mynumber');
-        break;
       case 'leaderboard':
-        await this.triggerCommand(ctx, '/leaderboard');
-        break;
       case 'prizestats':
-        await this.triggerCommand(ctx, '/prizestats');
-        break;
       case 'winnerstats':
-        await this.triggerCommand(ctx, '/winnerstats');
-        break;
       case 'scheduled':
-        await this.triggerCommand(ctx, '/scheduled');
+        await this.executeCommand(ctx, `/${action}`);
         break;
     }
   }
@@ -325,35 +336,52 @@ export class UserMenu {
    * Handle create actions
    */
   private async handleCreateAction(ctx: Context, action: string): Promise<void> {
+    const userId = ctx.from?.id?.toString();
+    
     switch (action) {
       case 'standard':
-        await this.triggerCommand(ctx, '/create');
+        // Execute create command directly
+        await this.executeCommand(ctx, '/create');
         break;
+        
       case 'custom':
-        await ctx.answerCbQuery();
-        await ctx.reply(
-          '⚙️ **Custom Game Creation**\n\n' +
-          'Use these options:\n' +
-          '`/create --max 20` - Set max players\n' +
-          '`/create --start 10` - Set 10 min start delay\n' +
-          '`/create --survivors 3` - Set 3 survivors\n\n' +
-          'Combine options:\n' +
-          '`/create --max 30 --start 5 --survivors 2`',
-          { parse_mode: 'Markdown' }
+        // Show custom options menu
+        await ctx.editMessageText('⚙️ **Custom Game Options**\n\nSelect your configuration:', {
+          parse_mode: 'Markdown',
+          reply_markup: this.getCustomGameMenu()
+        });
+        break;
+        
+      case 'event':
+        // Store state for event creation
+        this.setMenuState(userId!, { menu: 'event_prize' });
+        await ctx.editMessageText(
+          '🌟 **Event Game - Prize Amount**\n\n' +
+          'Select prize pool (in tokens):',
+          {
+            parse_mode: 'Markdown',
+            reply_markup: this.getEventPrizeMenu()
+          }
         );
         break;
-      case 'event':
-        await ctx.answerCbQuery();
-        await ctx.reply(
-          '🌟 **Event Game Creation**\n\n' +
-          'Create special event:\n' +
-          '`/create --event 100000 "Weekend Special"`\n\n' +
-          'Options:\n' +
-          '• Prize: 1,000 - 1,000,000 tokens\n' +
-          '• Name: Up to 50 characters\n' +
-          '• Can combine with --max, --start, --survivors',
-          { parse_mode: 'Markdown' }
-        );
+        
+      // Custom game parameter selections
+      case 'custom_max':
+        await ctx.editMessageText('👥 **Select Maximum Players**', {
+          reply_markup: this.getMaxPlayersMenu()
+        });
+        break;
+        
+      case 'custom_start':
+        await ctx.editMessageText('⏱️ **Select Start Delay**', {
+          reply_markup: this.getStartDelayMenu()
+        });
+        break;
+        
+      case 'custom_survivors':
+        await ctx.editMessageText('🏆 **Select Number of Winners**', {
+          reply_markup: this.getSurvivorsMenu()
+        });
         break;
     }
   }
@@ -377,13 +405,13 @@ export class UserMenu {
         );
         break;
       case 'commands':
-        await this.triggerCommand(ctx, '/help');
+        await this.executeCommand(ctx, '/help');
         break;
       case 'admin':
-        await this.triggerCommand(ctx, '/help --admin');
+        await this.executeCommand(ctx, '/help --admin');
         break;
       default:
-        await this.triggerCommand(ctx, `/help --${action}`);
+        await this.executeCommand(ctx, `/help --${action}`);
         break;
     }
   }
@@ -394,16 +422,16 @@ export class UserMenu {
   private async handleStatsAction(ctx: Context, action: string): Promise<void> {
     switch (action) {
       case 'personal':
-        await this.triggerCommand(ctx, '/stats');
+        await this.executeCommand(ctx, '/stats');
         break;
       case 'leaderboard':
-        await this.triggerCommand(ctx, '/leaderboard');
+        await this.executeCommand(ctx, '/leaderboard');
         break;
       case 'prizes':
-        await this.triggerCommand(ctx, '/prizestats');
+        await this.executeCommand(ctx, '/prizestats');
         break;
       case 'winners':
-        await this.triggerCommand(ctx, '/winnerstats');
+        await this.executeCommand(ctx, '/winnerstats');
         break;
       case 'global':
         await ctx.answerCbQuery();
@@ -438,34 +466,13 @@ export class UserMenu {
     if (command) {
       if (command === '/admin') {
         // Switch to admin panel
-        await ctx.answerCbQuery('Opening admin panel...');
-        await this.triggerCommand(ctx, command);
+        await this.executeCommand(ctx, command);
       } else {
-        await this.triggerCommand(ctx, command);
+        await this.executeCommand(ctx, command);
       }
     }
   }
 
-  /**
-   * Trigger a command
-   */
-  private async triggerCommand(ctx: Context, command: string): Promise<void> {
-    await ctx.answerCbQuery();
-    // Create a fake message update to trigger the command
-    const fakeMessage = {
-      ...ctx.update,
-      message: {
-        ...(ctx.update as any).callback_query?.message,
-        text: command,
-        from: ctx.from,
-        chat: ctx.chat,
-        date: Date.now()
-      }
-    };
-    
-    // @ts-ignore - Trigger the command through the bot
-    await ctx.tg.handleUpdate(fakeMessage);
-  }
 
   /**
    * Check if user is admin
@@ -495,6 +502,163 @@ export class UserMenu {
    */
   clearMenuState(userId: string): void {
     this.menuStates.delete(userId);
+  }
+
+  /**
+   * Execute a command directly
+   */
+  private async executeCommand(ctx: Context, command: string): Promise<void> {
+    await ctx.answerCbQuery('Processing...');
+    
+    try {
+      await ctx.deleteMessage();
+    } catch (e) {
+      // Ignore
+    }
+    
+    // Create a fake update to trigger the command
+    const fakeUpdate = {
+      update_id: Date.now(),
+      message: {
+        message_id: Date.now(),
+        from: ctx.from,
+        chat: ctx.chat,
+        date: Math.floor(Date.now() / 1000),
+        text: command
+      }
+    };
+    
+    // Get the bot instance and handle the update
+    const bot = (ctx as any).telegram._bot || (ctx as any).telegram.bot || (ctx as any).tg?._bot;
+    if (bot && bot.handleUpdate) {
+      await bot.handleUpdate(fakeUpdate);
+    } else {
+      // Fallback - tell user to type the command
+      await ctx.reply(`Please type: ${command}`);
+    }
+  }
+
+  /**
+   * Get custom game menu
+   */
+  private getCustomGameMenu(): InlineKeyboardMarkup {
+    return {
+      inline_keyboard: [
+        [
+          { text: '👥 Max Players', callback_data: 'user:create:custom_max' }
+        ],
+        [
+          { text: '⏱️ Start Delay', callback_data: 'user:create:custom_start' }
+        ],
+        [
+          { text: '🏆 Winners Count', callback_data: 'user:create:custom_survivors' }
+        ],
+        [
+          { text: '🔙 Back', callback_data: 'user:create' }
+        ]
+      ]
+    };
+  }
+
+  /**
+   * Get event prize menu
+   */
+  private getEventPrizeMenu(): InlineKeyboardMarkup {
+    return {
+      inline_keyboard: [
+        [
+          { text: '💰 10,000', callback_data: 'user:event_prize:10000' },
+          { text: '💰 25,000', callback_data: 'user:event_prize:25000' }
+        ],
+        [
+          { text: '💰 50,000', callback_data: 'user:event_prize:50000' },
+          { text: '💰 100,000', callback_data: 'user:event_prize:100000' }
+        ],
+        [
+          { text: '💰 250,000', callback_data: 'user:event_prize:250000' },
+          { text: '💰 500,000', callback_data: 'user:event_prize:500000' }
+        ],
+        [
+          { text: '💰 1,000,000', callback_data: 'user:event_prize:1000000' }
+        ],
+        [
+          { text: '🔙 Back', callback_data: 'user:create' }
+        ]
+      ]
+    };
+  }
+
+  /**
+   * Get max players menu
+   */
+  private getMaxPlayersMenu(): InlineKeyboardMarkup {
+    return {
+      inline_keyboard: [
+        [
+          { text: '10', callback_data: 'user:custom_exec:max:10' },
+          { text: '20', callback_data: 'user:custom_exec:max:20' },
+          { text: '30', callback_data: 'user:custom_exec:max:30' }
+        ],
+        [
+          { text: '40', callback_data: 'user:custom_exec:max:40' },
+          { text: '50', callback_data: 'user:custom_exec:max:50' },
+          { text: '75', callback_data: 'user:custom_exec:max:75' }
+        ],
+        [
+          { text: '100', callback_data: 'user:custom_exec:max:100' },
+          { text: '150', callback_data: 'user:custom_exec:max:150' },
+          { text: '200', callback_data: 'user:custom_exec:max:200' }
+        ],
+        [
+          { text: '🔙 Back', callback_data: 'user:create:custom' }
+        ]
+      ]
+    };
+  }
+
+  /**
+   * Get start delay menu
+   */
+  private getStartDelayMenu(): InlineKeyboardMarkup {
+    return {
+      inline_keyboard: [
+        [
+          { text: '1 min', callback_data: 'user:custom_exec:start:1' },
+          { text: '3 min', callback_data: 'user:custom_exec:start:3' },
+          { text: '5 min', callback_data: 'user:custom_exec:start:5' }
+        ],
+        [
+          { text: '10 min', callback_data: 'user:custom_exec:start:10' },
+          { text: '15 min', callback_data: 'user:custom_exec:start:15' },
+          { text: '30 min', callback_data: 'user:custom_exec:start:30' }
+        ],
+        [
+          { text: '🔙 Back', callback_data: 'user:create:custom' }
+        ]
+      ]
+    };
+  }
+
+  /**
+   * Get survivors menu
+   */
+  private getSurvivorsMenu(): InlineKeyboardMarkup {
+    return {
+      inline_keyboard: [
+        [
+          { text: '1 Winner', callback_data: 'user:custom_exec:survivors:1' },
+          { text: '2 Winners', callback_data: 'user:custom_exec:survivors:2' },
+          { text: '3 Winners', callback_data: 'user:custom_exec:survivors:3' }
+        ],
+        [
+          { text: '5 Winners', callback_data: 'user:custom_exec:survivors:5' },
+          { text: '10 Winners', callback_data: 'user:custom_exec:survivors:10' }
+        ],
+        [
+          { text: '🔙 Back', callback_data: 'user:create:custom' }
+        ]
+      ]
+    };
   }
 }
 
