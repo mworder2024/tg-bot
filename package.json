@@ -7,7 +7,7 @@
     "dev": "tsx watch --clear-screen=false src/index.ts",
     "build": "tsc -p tsconfig.build.json --allowJs || echo 'Build completed with warnings'",
     "build:clean": "tsc --build --clean",
-    "start": "node --enable-source-maps dist/index.js",
+    "start": "node -r dotenv/config --enable-source-maps dist/index.js",
     "test": "jest --passWithNoTests",
     "test:watch": "jest --watch --passWithNoTests",
     "test:coverage": "jest --coverage --passWithNoTests",
